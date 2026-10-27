@@ -50,6 +50,21 @@ its track and the roads it rode first. `pnpm build` writes a static build
 to `web/dist/`, data included, so it is for local use until phase 4 adds
 the privacy zone.
 
+## Building a route
+
+The Route section in the panel builds loops in the browser; there is no
+routing server. Set a start with **Pick start on map** (then click the
+map) or **Start at map centre**, choose a distance and press
+**Generate**. The loop heads out to the biggest patch of unridden roads
+within half the distance and comes back another way, preferring
+unridden roads and using tracks only to reach them. The panel shows the
+loop's length, its unridden road and track km, and the share of the loop
+on unridden roads. **Try another** picks a different patch, in another
+direction where there is one; **Download GPX** saves the loop as a GPX
+1.1 track. The route graph builds in the background while the map loads,
+in a few seconds.
+
 ## Status
 
-Phases 1 (pipeline) and 2 (map) done; the route builder is not started.
+Phases 1 (pipeline) and 2 (map) done. Phase 3 (route builder) is built;
+loading a GPX on the Garmin is still to be checked.

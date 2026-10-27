@@ -91,11 +91,22 @@ from `tracks/<id>.json` and highlights its first-ridden edges, solid
 where they count as its new km.
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
-so loops prefer roads but may use a track to reach one. Given start and
-target distance D: find the unridden cluster with the most countable km
-within D/2 of start, Dijkstra to it, Dijkstra back with edges used on
-the way out penalised again. Export GPX. Own Dijkstra first; BRouter with
-nogo areas is the fallback if loops come out ugly.
+so loops prefer roads but may use a track to reach one. The graph (nodes
+are the `a`/`b` OSM node ids, edges undirected) is built in a Web Worker
+that fetches the edge files itself; that is faster than handing it
+MapLibre's parsed copy, because structured cloning 400k features blocks
+the page for seconds. Given start and target distance D: Dijkstra from
+the start, cut at D/2 of path length; clusters are connected components
+of unridden countable edges, ranked by their countable km inside that
+reach, counting only clusters that reach at least 0.35 D out (a cluster
+next to the start cannot turn a loop of length D). In the chosen cluster
+the turnaround is the node at outbound length r that is cheapest per
+metre; Dijkstra back with the outbound edges × 4 again, then r is
+rescaled until out + back is within 5 % of D (at most 8 tries). "Try
+another" walks the clusters in rank order, discounting any within 45° of
+an earlier one's bearing so the next loop heads somewhere else. Export
+GPX 1.1. Own Dijkstra first; BRouter with nogo areas is the fallback if
+loops come out ugly.
 
 ## Phases
 
@@ -116,6 +127,10 @@ Each phase ends on a checkable criterion.
 - **Phase 3, route builder.** Click start, choose distance, get a loop.
   Done when a generated 40 km loop has at least half its length on
   unridden countable roads, downloads as GPX, and loads on the Garmin.
+  Built: from Sandnes centre the first 40 km loop is 40.8 km with 91 %
+  on unridden countable roads, routed in 40-70 ms after a 2-4 s graph
+  build, and its GPX opens in a GPX viewer. Loading on the Garmin is
+  still open.
 - **Phase 4, optional.** Scheduled GitHub Action with the API key as a
   secret that regenerates data. Privacy zone and GitHub Pages deploy.
 
@@ -123,6 +138,10 @@ Each phase ends on a checkable criterion.
 
 - Exact tier map: unknown until the data is on a map. `service` roads
   (driveways, parking aisles) are the likely argument.
+- Loop shape: in a dense street grid the way back runs a block or two
+  from the way out, so loops come out as narrow corridors (Sandnes to
+  Stavanger and back) rather than round. A cost on edges near the
+  outbound path would widen them; BRouter is the bigger step.
 - Data size: the edge files are about 120 MB in all and the first full
   view takes about 8 s. Fine locally; a published site (phase 4) may want
   vector tiles (PMTiles) instead.
