@@ -6,7 +6,7 @@ not. Static site, no backend, no accounts.
 
 ## How it works
 
-1. **fetch**: rides come from Intervals.icu (personal API key, GPX per
+1. **rides**: rides come from Intervals.icu (personal API key, GPX per
    activity), cached locally.
 2. **roads**: the road network comes from OpenStreetMap, split into edges
    at every intersection.
@@ -21,6 +21,21 @@ not. Static site, no backend, no accounts.
 
 See [PLAN.md](PLAN.md) for decisions, phases and open questions.
 
+## Running the pipeline
+
+Needs Node 24 and pnpm. Copy `.env.example` to `.env` and fill in the
+Intervals.icu API key and athlete id.
+
+```bash
+pnpm install
+pnpm rides   # rides -> cache/activities
+pnpm roads   # roads per kommune -> cache/roads; `pnpm roads sandnes` for one
+pnpm match   # -> web/public/data/edges.json + stats.json
+```
+
+`pnpm match --skip-outside` matches without fetching roads for rides that
+leave the loaded kommuner, for runs with a partial kommune list.
+
 ## Status
 
-Phase 0: plan only, no code yet.
+Phase 1 (pipeline) done; the map and route builder are not started.

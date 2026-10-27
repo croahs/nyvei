@@ -1,0 +1,23 @@
+{
+  "name": "nyvei",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "rides": "tsx pipeline/rides.ts",
+    "roads": "tsx pipeline/roads.ts",
+    "match": "tsx pipeline/match.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "flatbush": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}
