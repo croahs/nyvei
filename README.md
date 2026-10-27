@@ -11,10 +11,11 @@ not. Static site, no backend, no accounts.
 2. **roads**: the road network comes from OpenStreetMap, split into edges
    at every intersection.
 3. **match**: an edge counts as ridden when a track covers most of its
-   length within a few metres. Output is one GeoJSON of edges with a
-   `ridden` flag plus a stats file.
+   length within a few metres. Roads and cycleways count toward coverage;
+   tracks and paths only count as new kilometres on a ride. Rides outside
+   Rogaland get their roads fetched on demand.
 4. **site**: a MapLibre map shows ridden and unridden roads, coverage per
-   area, and new kilometres per ride.
+   kommune, and new kilometres per ride.
 5. **route**: pick a start and a distance in the browser, get a loop that
    prefers unridden roads, download it as GPX.
 
