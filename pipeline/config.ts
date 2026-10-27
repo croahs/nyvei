@@ -14,6 +14,8 @@ export type Tier = "countable" | "bonus";
 
 /** Tier by OSM highway value. Values missing here are dropped; roads.ts reports them. */
 export const TIER: Record<string, Tier> = {
+  trunk: "countable",
+  trunk_link: "countable",
   primary: "countable",
   primary_link: "countable",
   secondary: "countable",
@@ -32,9 +34,26 @@ export const TIER: Record<string, Tier> = {
   service: "bonus",
 };
 
+/**
+ * Tag values that drop a way on every tier. Applied in the Overpass query and
+ * again when splitting cached data, so a cache fetched before a rule was added
+ * still gives the same edges.
+ */
+export const EXCLUDE: Record<string, string[]> = {
+  highway: ["motorway", "motorway_link", "steps"],
+  access: ["no", "private"],
+  bicycle: ["no"],
+  /** Norwegian motortrafikkvei. */
+  motorroad: ["yes"],
+};
+
 /** Overpass filter shared by kommune and ride-box queries. */
 export const HIGHWAY_FILTER =
-  '["highway"]["highway"!~"^(motorway|motorway_link|steps)$"]["access"!~"^(no|private)$"]';
+  '["highway"]' + Object.entries(EXCLUDE).map(([k, v]) => `["${k}"!~"^(${v.join("|")})$"]`).join("");
+
+export function isExcluded(tags: Record<string, string>): boolean {
+  return Object.entries(EXCLUDE).some(([k, v]) => tags[k] !== undefined && v.includes(tags[k]!));
+}
 
 export const MATCH = {
   /** A track point this close to an edge sample counts as covering it (m). */

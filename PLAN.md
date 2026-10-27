@@ -12,9 +12,11 @@ makes loops through unridden roads and exports GPX.
   back to the first ride, June 2024, so no backfill is needed.
 - **Roads from OpenStreetMap, two tiers.** *Countable* edges are roads
   and cycleways. *Bonus* edges are tracks, paths and other ways a bike
-  can use but a map cannot promise are rideable. Coverage percent counts
-  countable edges only; new km per ride counts both tiers. Without this
-  split 100 % of a kommune is unreachable.
+  can use but a map cannot promise are rideable. Trunk roads count as
+  roads. Ways with `bicycle=no` or `motorroad=yes` (motortrafikkvei) are
+  dropped on every tier, like motorways and steps. Coverage percent
+  counts countable edges only; new km per ride counts both tiers. Without
+  this split 100 % of a kommune is unreachable.
 - **Region: Rogaland, fetched per kommune.** One Overpass query per
   kommune polygon, cached per kommune, so per-kommune percent falls out
   and Rogaland is the sum. Adding a region later is adding kommuner to a
@@ -24,7 +26,8 @@ makes loops through unridden roads and exports GPX.
   demand and caches them. Those edges show on the map and in new km but
   belong to no kommune and count toward no percent. The first ride in a
   new place is 100 % new; the second one there is matched against the
-  first.
+  first. A ride box wider than 150 km is a GPS glitch or a car transfer,
+  not a ride, and is skipped with a warning.
 - **Stack:** Node + TypeScript (`tsx`) for the pipeline, Vite + MapLibre
   GL JS for the site, `flatbush` for the spatial index. Routing runs in
   the browser over the same edge graph; no routing server.
@@ -36,7 +39,7 @@ makes loops through unridden roads and exports GPX.
 
 ```
 pipeline/            pnpm scripts, run locally
-  fetch.ts           Intervals.icu -> cache/activities/<id>.gpx (incremental by id)
+  rides.ts           Intervals.icu -> cache/activities/<id>.gpx (incremental by id)
   roads.ts           Overpass per kommune -> cache/roads/<kommune>.json
   match.ts           tracks x edges -> web/public/data/edges.json + stats.json
                      (fetches cache/roads/ride-<id>.json for rides outside the region)
@@ -44,18 +47,18 @@ web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
 ```
 
-**fetch.** Activity types Ride, GravelRide, MountainBikeRide, EBikeRide.
+**rides.** Activity types Ride, GravelRide, MountainBikeRide, EBikeRide.
 Skip VirtualRide and anything without GPS. Keep a manifest of fetched ids
 so reruns only download new rides.
 
 **roads.** Kommune list in config (Rogaland's 23 to start). Per kommune:
 Overpass query for `highway=*` inside the admin boundary, minus
-motorway, motorway_link, steps, and `access=no`/`private`. Tier by
-`highway` value, as a config map:
+motorway, motorway_link, steps, `access=no`/`private`, `bicycle=no` and
+`motorroad=yes`. Tier by `highway` value, as a config map:
 
 | tier      | highway values                                                                         |
 | --------- | -------------------------------------------------------------------------------------- |
-| countable | primary, secondary, tertiary, unclassified, residential, living_street, cycleway, and their `_link` variants |
+| countable | trunk, primary, secondary, tertiary, unclassified, residential, living_street, cycleway, and their `_link` variants |
 | bonus     | track, path, bridleway, footway, pedestrian, service                                   |
 
 Adjust the map when the data is on a screen; `service` may move up.
@@ -65,11 +68,15 @@ kommune and tags.
 **match.** Spatial index on edges. For each track point, find edges
 within 15 m. An edge is ridden when matched points cover at least 80 % of
 its length, sampled every 10 m. Either direction counts. Per edge store
-`ridden`, `first_date`, `first_activity`. Before matching a ride, check
+`ridden`, `first_date`, `first_activity`. That blanket rule clears a
+road and the cycleway beside it together, so new km per ride counts
+only edges the ride was *primary* for: each track point credits its
+nearest edge within 15 m, and an edge is primary when those credits
+cover 80 % of its samples. Before matching a ride, check
 its bounding box against the loaded kommune polygons; the part outside
 gets an on-demand Overpass fetch for that box plus 1 km, cached under the
 ride id. Stats: per kommune and total, countable km ridden over
-countable km, and per ride the new km split by tier (edges whose
+countable km, and per ride the new km split by tier (primary edges whose
 `first_activity` is that ride).
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
@@ -84,7 +91,7 @@ nogo areas is the fallback if loops come out ugly.
 Each phase ends on a checkable criterion.
 
 - **Phase 0, repo and plan.** This document. Done.
-- **Phase 1, pipeline.** `pnpm fetch && pnpm roads && pnpm match`
+- **Phase 1, pipeline.** `pnpm rides && pnpm roads && pnpm match`
   produces `edges.json` and `stats.json` for Sandnes kommune, then all
   of Rogaland. Done when the ridden set for one known ride matches the
   roads actually ridden on that ride, checked by eye in a GeoJSON
@@ -104,6 +111,6 @@ Each phase ends on a checkable criterion.
 
 - Exact tier map: unknown until the data is on a map. `service` roads
   (driveways, parking aisles) are the likely argument.
-- Overpass load for all of Rogaland: 23 queries of a few MB each should
-  be fine; if it is not, Geofabrik's Norway extract plus `osmium` is the
-  fallback.
+- `edges.json` for all of Rogaland is about 150 MB as one GeoJSON file,
+  too big for the browser to load whole. Phase 2 input: per-kommune
+  files, 5-decimal coordinates, short property names.
