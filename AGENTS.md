@@ -12,7 +12,7 @@ when a decision lands; never append a contradicting section.
 - The Intervals.icu API key lives in `.env` (gitignored) as
   `INTERVALS_API_KEY`. Never commit it, never print it.
 - `cache/` is derived and gitignored. Everything in it must be
-  reproducible from `pnpm fetch` and `pnpm roads`.
+  reproducible from `pnpm rides` and `pnpm roads`.
 - Ridden-road data reveals where the owner lives. Nothing under
   `web/public/data/` is published anywhere without the privacy zone from
   PLAN.md phase 4.
