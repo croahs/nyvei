@@ -6,7 +6,7 @@ not. Static site, no backend, no accounts.
 
 ## How it works
 
-1. **fetch**: rides come from Intervals.icu (personal API key, GPX per
+1. **rides**: rides come from Intervals.icu (personal API key, GPX per
    activity), cached locally.
 2. **roads**: the road network comes from OpenStreetMap, split into edges
    at every intersection.
@@ -28,9 +28,9 @@ Intervals.icu API key and athlete id.
 
 ```bash
 pnpm install
-pnpm run fetch   # rides -> cache/activities (pnpm's own `fetch` command shadows the bare form)
-pnpm roads       # roads per kommune -> cache/roads; `pnpm roads sandnes` for one
-pnpm match       # -> web/public/data/edges.json + stats.json
+pnpm rides   # rides -> cache/activities
+pnpm roads   # roads per kommune -> cache/roads; `pnpm roads sandnes` for one
+pnpm match   # -> web/public/data/edges.json + stats.json
 ```
 
 `pnpm match --skip-outside` matches without fetching roads for rides that

@@ -2,7 +2,7 @@
 // shared with another way (or the way's own ends), so every intersection
 // starts a new edge.
 
-import { TIER, type Tier } from "../config";
+import { isExcluded, TIER, type Tier } from "../config";
 import { bboxOf, lineLength, pointInPolygon, type BBox, type LonLat, type Polygon } from "./geo";
 import type { OverpassWay } from "./overpass";
 
@@ -10,6 +10,9 @@ export interface Edge {
   /** `<way id>_<index within way>` */
   id: string;
   way: number;
+  /** OSM node ids of the end points, for building the routing graph. */
+  from: number;
+  to: number;
   coords: LonLat[];
   /** metres */
   length: number;
@@ -33,7 +36,8 @@ export interface SplitResult {
   dropped: Map<string, number>;
 }
 
-export function splitWays(ways: SourcedWay[], polygons: Map<string, Polygon>): SplitResult {
+export function splitWays(allWays: SourcedWay[], polygons: Map<string, Polygon>): SplitResult {
+  const ways = allWays.filter(({ way }) => !isExcluded(way.tags ?? {}));
   const nodeUse = new Map<number, number>();
   for (const { way } of ways) {
     for (const n of way.nodes) nodeUse.set(n, (nodeUse.get(n) ?? 0) + 1);
@@ -60,6 +64,8 @@ export function splitWays(ways: SourcedWay[], polygons: Map<string, Polygon>): S
         edges.push({
           id: `${way.id}_${index}`,
           way: way.id,
+          from: way.nodes[start]!,
+          to: way.nodes[i]!,
           coords,
           length,
           tier,

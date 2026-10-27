@@ -6,7 +6,11 @@
 // box plus padding, cached as cache/roads/ride-<id>.json. --skip-outside only
 // reports those rides, for runs with a partial kommune list.
 // Pass 2 builds edges from all cached ways and matches rides oldest first, so
-// the first ride over an edge owns it.
+// the first ride over an edge owns it. Two rules per ride: an edge is *ridden*
+// when any track point within 15 m covers 80 % of its samples (so a road and
+// the cycleway beside it clear together), and *primary* when the track points
+// whose nearest edge it is cover 80 % (so new km per ride counts the way
+// actually ridden, not its neighbours).
 
 import { readFileSync } from "node:fs";
 import Flatbush from "flatbush";
@@ -16,6 +20,7 @@ import {
   bboxContains,
   bboxOf,
   LocalProjection,
+  nearestOnPolyline,
   padBBox,
   pointInPolygon,
   samplePolyline,
@@ -130,8 +135,16 @@ function collectWays(slugs: string[], polygons: Map<string, Polygon>, rideRoads:
   return [...byId.values()];
 }
 
-function matchRide(track: Track, edges: Edge[], index: Flatbush, ridden: Map<string, Ridden>): number {
+interface RideMatch {
+  /** edges marked ridden by this ride (blanket rule) */
+  matched: number;
+  /** ids of edges this ride was the nearest edge for */
+  primary: Set<string>;
+}
+
+function matchRide(track: Track, edges: Edge[], index: Flatbush, ridden: Map<string, Ridden>): RideMatch {
   const { ride, points } = track;
+  const primary = new Set<string>();
   const tb = bboxOf(points);
   const proj = new LocalProjection((tb.minLon + tb.maxLon) / 2, (tb.minLat + tb.maxLat) / 2);
   const xy = densify(points.map((p) => proj.project(p)), MATCH.densifyM, MATCH.maxGapM);
@@ -142,10 +155,14 @@ function matchRide(track: Track, edges: Edge[], index: Flatbush, ridden: Map<str
   const r = MATCH.radiusM;
   const search = padBBox(tb, r);
   const candidates = index.search(search.minLon, search.minLat, search.maxLon, search.maxLat);
-  let matched = 0;
+  if (candidates.length === 0) return { matched: 0, primary };
+
+  // Project the candidates once, in metres, and index them for the nearest-edge pass.
+  const exyOf = new Map<number, XY[]>();
+  const boxOf = new Map<number, [number, number, number, number]>();
+  const candIndex = new Flatbush(candidates.length);
   for (const ei of candidates) {
-    const edge = edges[ei]!;
-    const exy = edge.coords.map((p) => proj.project(p));
+    const exy = edges[ei]!.coords.map((p) => proj.project(p));
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const [x, y] of exy) {
       if (x < minX) minX = x;
@@ -153,14 +170,25 @@ function matchRide(track: Track, edges: Edge[], index: Flatbush, ridden: Map<str
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
+    exyOf.set(ei, exy);
+    boxOf.set(ei, [minX, minY, maxX, maxY]);
+    candIndex.add(minX, minY, maxX, maxY);
+  }
+  candIndex.finish();
+
+  // Ridden: any track point within r covers 80 % of the samples.
+  let matched = 0;
+  const sampleCount = new Map<number, number>();
+  for (const ei of candidates) {
+    const [minX, minY, maxX, maxY] = boxOf.get(ei)!;
     let near = false;
     trackIndex.search(minX - r, minY - r, maxX + r, maxY + r, () => {
       near = true;
       return false;
     });
     if (!near) continue;
-
-    const samples = samplePolyline(exy, MATCH.sampleM);
+    const samples = samplePolyline(exyOf.get(ei)!, MATCH.sampleM);
+    sampleCount.set(ei, samples.length);
     const need = Math.ceil(samples.length * MATCH.coverage);
     let covered = 0;
     for (let i = 0; i < samples.length; i++) {
@@ -170,9 +198,36 @@ function matchRide(track: Track, edges: Edge[], index: Flatbush, ridden: Map<str
     }
     if (covered < need) continue;
     matched++;
+    const edge = edges[ei]!;
     if (!ridden.has(edge.id)) ridden.set(edge.id, { first_date: ride.date.slice(0, 10), first_activity: ride.id });
   }
-  return matched;
+
+  // Primary: each track point credits only its nearest edge, at the sample it projects onto.
+  const credits = new Map<number, Set<number>>();
+  for (const [x, y] of xy) {
+    let best = -1;
+    let bestD = r;
+    let bestT = 0;
+    candIndex.search(x - r, y - r, x + r, y + r, (ci) => {
+      const ei = candidates[ci]!;
+      const { d, t } = nearestOnPolyline(exyOf.get(ei)!, x, y);
+      if (d < bestD) {
+        bestD = d;
+        best = ei;
+        bestT = t;
+      }
+      return false;
+    });
+    if (best < 0) continue;
+    let set = credits.get(best);
+    if (!set) credits.set(best, (set = new Set()));
+    set.add(Math.round(bestT / MATCH.sampleM));
+  }
+  for (const [ei, set] of credits) {
+    const n = sampleCount.get(ei) ?? samplePolyline(exyOf.get(ei)!, MATCH.sampleM).length;
+    if (Math.min(set.size, n) >= Math.ceil(n * MATCH.coverage)) primary.add(edges[ei]!.id);
+  }
+  return { matched, primary };
 }
 
 async function main(): Promise<void> {
@@ -219,16 +274,15 @@ async function main(): Promise<void> {
     matched_edges: number;
   }[] = [];
   for (const track of tracks) {
-    const before = ridden.size;
-    const matched = matchRide(track, edges, index, ridden);
+    const { ride } = track;
+    const { matched, primary } = matchRide(track, edges, index, ridden);
+    // New km: primary edges this ride was the first to ride.
     const fresh: Record<Tier, number> = { countable: 0, bonus: 0 };
-    let i = 0;
-    for (const id of ridden.keys()) {
-      if (i++ < before) continue;
+    for (const id of primary) {
+      if (ridden.get(id)?.first_activity !== ride.id) continue;
       const e = edgeById.get(id)!;
       fresh[e.tier] += e.length;
     }
-    const { ride } = track;
     rides.push({
       id: ride.id,
       name: ride.name,
@@ -286,6 +340,8 @@ async function main(): Promise<void> {
       geometry: { type: "LineString", coordinates: e.coords.map(([lon, lat]) => [round6(lon), round6(lat)]) },
       properties: {
         id: e.id,
+        from: e.from,
+        to: e.to,
         tier: e.tier,
         kommune: e.kommune,
         highway: e.highway,

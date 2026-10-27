@@ -1,4 +1,4 @@
-// pnpm fetch: list rides in Intervals.icu and download the GPX of every ride
+// pnpm rides: list rides in Intervals.icu and download the GPX of every ride
 // not yet in the manifest. Idempotent; reruns only touch new ids.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";

@@ -88,6 +88,30 @@ export function pointInPolygon(p: LonLat, poly: Polygon): boolean {
   return poly.rings.some((r) => pointInRing(p, r));
 }
 
+/** Distance from a point to a polyline, and how far along the polyline the closest point lies. Input in metres. */
+export function nearestOnPolyline(poly: XY[], x: number, y: number): { d: number; t: number } {
+  let best = Infinity;
+  let bestT = 0;
+  let along = 0;
+  for (let i = 1; i < poly.length; i++) {
+    const [ax, ay] = poly[i - 1]!;
+    const [bx, by] = poly[i]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let u = len2 > 0 ? ((x - ax) * dx + (y - ay) * dy) / len2 : 0;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    const d = Math.hypot(x - (ax + u * dx), y - (ay + u * dy));
+    const segLen = Math.sqrt(len2);
+    if (d < best) {
+      best = d;
+      bestT = along + u * segLen;
+    }
+    along += segLen;
+  }
+  return { d: best, t: bestT };
+}
+
 /** Points along a polyline every `step` metres, endpoints included. Input in metres. */
 export function samplePolyline(xy: XY[], step: number): XY[] {
   const out: XY[] = [xy[0]!];
