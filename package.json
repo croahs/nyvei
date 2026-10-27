@@ -10,14 +10,18 @@
     "rides": "tsx pipeline/rides.ts",
     "roads": "tsx pipeline/roads.ts",
     "match": "tsx pipeline/match.ts",
-    "typecheck": "tsc --noEmit"
+    "dev": "vite web",
+    "build": "tsc --noEmit -p web && vite build web",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web"
   },
   "dependencies": {
-    "flatbush": "^4.4.0"
+    "flatbush": "^4.4.0",
+    "maplibre-gl": "^6.16.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vite": "^8.3.5"
   }
 }
