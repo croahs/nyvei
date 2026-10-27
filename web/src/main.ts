@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "./style.css";
 import { edgeFiles, loadStats, loadTrack, P, type BBox, type EdgeFile, type RideStats, type Stats } from "./data";
+import { setupRoute, type RoutePanel } from "./routepanel";
 
 // MapLibre looks for its worker next to its own module, which Vite's bundling moves.
 maplibregl.setWorkerUrl(workerUrl);
@@ -49,6 +50,7 @@ const loaded = new Set<string>();
 const settled = new Set<string>();
 let rideFilter: ExpressionSpecification = NO_RIDE;
 let selected: string | null = null;
+let route: RoutePanel | undefined;
 const started = performance.now();
 
 const interactive = () => [...loaded].flatMap((k) => [...GROUPS.map((g) => `${g.id}-${k}`), `${NEW_GROUP}-${k}`]);
@@ -150,6 +152,10 @@ function edgeAt(point: maplibregl.Point): MapGeoJSONFeature | undefined {
 }
 
 function showEdge(e: maplibregl.MapMouseEvent): void {
+  if (route?.picking) {
+    popup.remove();
+    return;
+  }
   const f = edgeAt(e.point);
   map.getCanvas().style.cursor = f ? "pointer" : "";
   if (!f) {
@@ -266,6 +272,7 @@ async function start(): Promise<void> {
   $("#generated").textContent = `Data from ${stats.generated.slice(0, 16).replace("T", " ")}`;
   await mapReady;
   setupLayers();
+  route = setupRoute(map, files);
   loadVisible();
   map.on("moveend", loadVisible);
 }

@@ -29,6 +29,21 @@
           <li><i class="thin dash" style="--c: #1d3f8f"></i>Track</li>
         </ul>
       </section>
+      <details id="route" open>
+        <summary>Route</summary>
+        <div class="route-row">
+          <button id="route-pick" type="button">Pick start on map</button>
+          <button id="route-centre" type="button">Start at map centre</button>
+        </div>
+        <div id="route-start" class="muted">No start yet</div>
+        <div class="route-row">
+          <label>Distance <input id="route-km" type="number" min="5" max="300" step="5" value="40" /> km</label>
+          <button id="route-go" type="button">Generate</button>
+          <button id="route-next" type="button">Try another</button>
+        </div>
+        <div id="route-result"></div>
+        <div class="route-row"><span id="route-status" class="muted">Building route graph…</span><button id="route-gpx" type="button">Download GPX</button></div>
+      </details>
       <details open>
         <summary>Kommuner</summary>
         <table id="kommuner">
