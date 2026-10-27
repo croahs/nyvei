@@ -33,6 +33,13 @@ section { margin: 8px 0; }
 #ride-info { background: var(--sel); border-radius: 6px; padding: 8px 10px; position: sticky; top: 0; z-index: 1; box-shadow: 0 1px 0 var(--line); }
 .ride-head { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
 button { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 1px 8px; cursor: pointer; }
+button:disabled { cursor: default; color: var(--muted); }
+button.active { background: #d0ebff; border-color: #1c7ed6; }
+
+.route-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+#route-km { width: 52px; font: inherit; }
+#route-status { flex: 1; }
+#route-result { margin: 6px 0; font-variant-numeric: tabular-nums; }
 
 details { margin-top: 12px; }
 summary { font-weight: 600; cursor: pointer; padding: 4px 0; }
