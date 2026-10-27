@@ -1,5 +1,6 @@
 // pnpm match [slug ...] [--skip-outside]: match every cached ride against the
-// road edges and write web/public/data/edges.json and stats.json.
+// road edges and write the site's data under web/public/data/: one edge file
+// per kommune, outside.json, one track per ride and stats.json.
 //
 // Pass 1 makes sure every ride has roads: points outside the loaded kommuner
 // (and outside earlier ride boxes) get an Overpass fetch for their bounding
@@ -11,19 +12,31 @@
 // the cycleway beside it clear together), and *primary* when the track points
 // whose nearest edge it is cover 80 % (so new km per ride counts the way
 // actually ridden, not its neighbours).
+//
+// Edge files (kommuner/<slug>.json, outside.json) are GeoJSON FeatureCollections
+// of LineStrings with 5-decimal coordinates and short property names:
+//   i  edge id, `<way id>_<index>`       a  OSM node id at the start (`from`)
+//   b  OSM node id at the end (`to`)     c  1 countable, 0 bonus
+//   h  highway                           n  name, absent when the way has none
+//   l  length in metres                  d  first ridden date, absent when unridden
+//   r  first activity id, absent when unridden
+//   p  1 when the first ride counted the edge as new km (primary), else absent
+// The kommune is the file name. web/src/data.ts mirrors this mapping.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import Flatbush from "flatbush";
 import { KOMMUNER, MATCH, PATHS, type Tier } from "./config";
 import { kmByTier, splitWays, type Edge, type SourcedWay } from "./lib/edges";
 import {
   bboxContains,
   bboxOf,
+  haversine,
   LocalProjection,
   nearestOnPolyline,
   padBBox,
   pointInPolygon,
   samplePolyline,
+  type BBox,
   type LonLat,
   type Polygon,
   type XY,
@@ -263,6 +276,8 @@ async function main(): Promise<void> {
   console.log(`${edges.length} edges from ${ways.length} ways; matching...`);
 
   const ridden = new Map<string, Ridden>();
+  /** edges whose first ride was also primary for them, i.e. counted as new km */
+  const counted = new Set<string>();
   const edgeById = new Map(edges.map((e) => [e.id, e]));
   const rides: {
     id: string;
@@ -280,6 +295,7 @@ async function main(): Promise<void> {
     const fresh: Record<Tier, number> = { countable: 0, bonus: 0 };
     for (const id of primary) {
       if (ridden.get(id)?.first_activity !== ride.id) continue;
+      counted.add(id);
       const e = edgeById.get(id)!;
       fresh[e.tier] += e.length;
     }
@@ -300,6 +316,17 @@ async function main(): Promise<void> {
   // Stats: percent is countable only and kommune only; outside edges count as new km but toward no percent.
   const isRidden = (e: Edge) => ridden.has(e.id);
   const kommuner: Record<string, unknown> = {};
+  const bboxByKommune = new Map<string | null, BBox>();
+  for (const e of edges) {
+    const b = bboxByKommune.get(e.kommune);
+    if (!b) bboxByKommune.set(e.kommune, { ...e.bbox });
+    else {
+      b.minLon = Math.min(b.minLon, e.bbox.minLon);
+      b.minLat = Math.min(b.minLat, e.bbox.minLat);
+      b.maxLon = Math.max(b.maxLon, e.bbox.maxLon);
+      b.maxLat = Math.max(b.maxLat, e.bbox.maxLat);
+    }
+  }
   const total = { countable_km: 0, countable_ridden_km: 0, bonus_km: 0, bonus_ridden_km: 0 };
   for (const k of targets) {
     const own = edges.filter((e) => e.kommune === k.slug);
@@ -312,6 +339,7 @@ async function main(): Promise<void> {
       percent: round(all.countable ? (100 * done.countable) / all.countable : 0),
       bonus_km: round(all.bonus),
       bonus_ridden_km: round(done.bonus),
+      bbox: bboxArray(bboxByKommune.get(k.slug)),
     };
     total.countable_km += all.countable;
     total.countable_ridden_km += done.countable;
@@ -330,30 +358,51 @@ async function main(): Promise<void> {
       outside_ridden_km: { countable: round(outsideDone.countable), bonus: round(outsideDone.bonus) },
     },
     kommuner,
+    /** Where outside.json has edges: the ride boxes fetched outside the region. */
+    outside: { boxes: rideRoads.map((r) => bboxArray(r.bbox)) },
     rides,
   };
 
-  const features = edges.map((e) => {
+  // Edge files grouped by kommune; see the property map at the top of this file.
+  const byKommune = new Map<string | null, unknown[]>();
+  for (const e of edges) {
     const r = ridden.get(e.id);
-    return {
+    let list = byKommune.get(e.kommune);
+    if (!list) byKommune.set(e.kommune, (list = []));
+    list.push({
       type: "Feature",
-      geometry: { type: "LineString", coordinates: e.coords.map(([lon, lat]) => [round6(lon), round6(lat)]) },
+      geometry: { type: "LineString", coordinates: e.coords.map(([lon, lat]) => [round5(lon), round5(lat)]) },
       properties: {
-        id: e.id,
-        from: e.from,
-        to: e.to,
-        tier: e.tier,
-        kommune: e.kommune,
-        highway: e.highway,
-        name: e.tags.name ?? null,
-        length: Math.round(e.length),
-        ridden: r !== undefined,
-        first_date: r?.first_date ?? null,
-        first_activity: r?.first_activity ?? null,
+        i: e.id,
+        a: e.from,
+        b: e.to,
+        c: e.tier === "countable" ? 1 : 0,
+        h: e.highway,
+        n: e.tags.name,
+        l: Math.round(e.length),
+        d: r?.first_date,
+        r: r?.first_activity,
+        p: counted.has(e.id) ? 1 : undefined,
       },
-    };
-  });
-  const edgesBytes = writeJson(PATHS.edgesOut, { type: "FeatureCollection", features });
+    });
+  }
+  // Clear the old output first so a shorter kommune list or the pre-phase-2 edges.json leaves nothing stale.
+  for (const path of [PATHS.kommunerOut, PATHS.tracksOut, PATHS.outsideOut, "web/public/data/edges.json"]) {
+    rmSync(path, { recursive: true, force: true });
+  }
+  let edgesBytes = 0;
+  for (const [kommune, features] of byKommune) {
+    const path = kommune === null ? PATHS.outsideOut : `${PATHS.kommunerOut}/${kommune}.json`;
+    edgesBytes += writeJson(path, { type: "FeatureCollection", features });
+  }
+
+  // Tracks for the ride highlight, thinned to a point every 10 m.
+  let trackBytes = 0;
+  for (const { ride, points } of tracks) {
+    const kept: LonLat[] = [points[0]!];
+    for (const p of points) if (haversine(kept[kept.length - 1]!, p) >= 10) kept.push(p);
+    trackBytes += writeJson(`${PATHS.tracksOut}/${ride.id}.json`, kept.map(([lon, lat]) => [round5(lon), round5(lat)]));
+  }
   const statsBytes = writeJson(PATHS.statsOut, stats, true);
 
   console.log(
@@ -361,14 +410,20 @@ async function main(): Promise<void> {
       `${stats.total.bonus_ridden_km} of ${stats.total.bonus_km} km bonus, ` +
       `${stats.total.outside_ridden_km.countable + stats.total.outside_ridden_km.bonus} km outside the region`,
   );
-  console.log(`${PATHS.edgesOut} ${mb(edgesBytes)}, ${PATHS.statsOut} ${mb(statsBytes)}, ${((Date.now() - started) / 1000).toFixed(0)} s`);
+  console.log(
+    `${byKommune.size} edge files ${mb(edgesBytes)}, ${tracks.length} tracks ${mb(trackBytes)}, ` +
+      `${PATHS.statsOut} ${mb(statsBytes)}, ${((Date.now() - started) / 1000).toFixed(0)} s`,
+  );
 }
 
 function round(n: number): number {
   return Number(n.toFixed(1));
 }
-function round6(n: number): number {
-  return Number(n.toFixed(6));
+function round5(n: number): number {
+  return Number(n.toFixed(5));
+}
+function bboxArray(b: BBox | undefined): number[] | null {
+  return b ? [b.minLon, b.minLat, b.maxLon, b.maxLat].map(round5) : null;
 }
 
 main().catch((err) => {
