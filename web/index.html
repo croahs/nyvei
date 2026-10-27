@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nyvei</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M2 13 Q8 1 14 13' fill='none' stroke='%23e8590c' stroke-width='3'/></svg>" />
+  </head>
+  <body>
+    <div id="map"></div>
+    <aside id="panel">
+      <header>
+        <h1>nyvei</h1>
+        <span id="status" class="muted">Loading…</span>
+      </header>
+      <section id="total"></section>
+      <ul class="legend">
+        <li><i style="--c: #e8590c"></i>Ridden road</li>
+        <li><i style="--c: #6f7a87"></i>Unridden road</li>
+        <li><i class="thin" style="--c: #8b3fd9"></i>Ridden track or path</li>
+        <li><i class="thin dash" style="--c: #9aa2ab"></i>Unridden track or path</li>
+      </ul>
+      <section id="ride-info" hidden>
+        <div class="ride-head"><strong id="ride-name"></strong><button id="ride-clear" type="button">Clear</button></div>
+        <div id="ride-new"></div>
+        <ul class="legend">
+          <li><i style="--c: #0ca678"></i>New, counted for this ride</li>
+          <li><i class="faint" style="--c: #0ca678"></i>First ridden alongside</li>
+          <li><i class="thin dash" style="--c: #1d3f8f"></i>Track</li>
+        </ul>
+      </section>
+      <details open>
+        <summary>Kommuner</summary>
+        <table id="kommuner">
+          <thead><tr><th>Kommune</th><th class="num">Ridden</th><th class="num">km</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
+      <details open>
+        <summary>Rides</summary>
+        <table id="rides">
+          <thead><tr><th>Date</th><th>Name</th><th class="num">km</th><th class="num" title="New countable km">New</th><th class="num" title="New bonus km">Bonus</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </details>
+      <footer id="generated" class="muted"></footer>
+    </aside>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
