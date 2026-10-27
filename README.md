@@ -21,6 +21,21 @@ not. Static site, no backend, no accounts.
 
 See [PLAN.md](PLAN.md) for decisions, phases and open questions.
 
+## Running the pipeline
+
+Needs Node 24 and pnpm. Copy `.env.example` to `.env` and fill in the
+Intervals.icu API key and athlete id.
+
+```bash
+pnpm install
+pnpm run fetch   # rides -> cache/activities (pnpm's own `fetch` command shadows the bare form)
+pnpm roads       # roads per kommune -> cache/roads; `pnpm roads sandnes` for one
+pnpm match       # -> web/public/data/edges.json + stats.json
+```
+
+`pnpm match --skip-outside` matches without fetching roads for rides that
+leave the loaded kommuner, for runs with a partial kommune list.
+
 ## Status
 
-Phase 0: plan only, no code yet.
+Phase 1 (pipeline) done; the map and route builder are not started.
