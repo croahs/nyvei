@@ -30,12 +30,26 @@ Intervals.icu API key and athlete id.
 pnpm install
 pnpm rides   # rides -> cache/activities
 pnpm roads   # roads per kommune -> cache/roads; `pnpm roads sandnes` for one
-pnpm match   # -> web/public/data/edges.json + stats.json
+pnpm match   # -> web/public/data/ (edge files per kommune, tracks, stats.json)
 ```
 
 `pnpm match --skip-outside` matches without fetching roads for rides that
 leave the loaded kommuner, for runs with a partial kommune list.
 
+## Running the site
+
+After `pnpm match`:
+
+```bash
+pnpm dev     # map at http://localhost:5173
+```
+
+The map loads each kommune's roads as it comes into view. Hover a road
+for its name, type and first-ridden date; click a ride in the list to see
+its track and the roads it rode first. `pnpm build` writes a static build
+to `web/dist/`, data included, so it is for local use until phase 4 adds
+the privacy zone.
+
 ## Status
 
-Phase 1 (pipeline) done; the map and route builder are not started.
+Phases 1 (pipeline) and 2 (map) done; the route builder is not started.

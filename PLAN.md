@@ -41,7 +41,8 @@ makes loops through unridden roads and exports GPX.
 pipeline/            pnpm scripts, run locally
   rides.ts           Intervals.icu -> cache/activities/<id>.gpx (incremental by id)
   roads.ts           Overpass per kommune -> cache/roads/<kommune>.json
-  match.ts           tracks x edges -> web/public/data/edges.json + stats.json
+  match.ts           tracks x edges -> web/public/data/kommuner/<slug>.json,
+                     outside.json, tracks/<id>.json, stats.json
                      (fetches cache/roads/ride-<id>.json for rides outside the region)
 web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
@@ -79,6 +80,16 @@ ride id. Stats: per kommune and total, countable km ridden over
 countable km, and per ride the new km split by tier (primary edges whose
 `first_activity` is that ride).
 
+**site.** Edges go out as one GeoJSON file per kommune plus `outside.json`,
+5-decimal coordinates, one-letter property names (the map is in the
+header of `match.ts` and in `web/src/data.ts`); about 80 MB for Rogaland
+and 40 MB outside. The site loads a file when its bounding box (ride
+boxes for `outside.json`) enters the viewport and MapLibre parses it in
+its worker, so the main thread only reads `stats.json`. Basemap is
+OpenFreeMap Positron, no key. Selecting a ride loads its thinned track
+from `tracks/<id>.json` and highlights its first-ridden edges, solid
+where they count as its new km.
+
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
 so loops prefer roads but may use a track to reach one. Given start and
 target distance D: find the unridden cluster with the most countable km
@@ -92,15 +103,16 @@ Each phase ends on a checkable criterion.
 
 - **Phase 0, repo and plan.** This document. Done.
 - **Phase 1, pipeline.** `pnpm rides && pnpm roads && pnpm match`
-  produces `edges.json` and `stats.json` for Sandnes kommune, then all
+  produces the edge files and `stats.json` for Sandnes kommune, then all
   of Rogaland. Done when the ridden set for one known ride matches the
   roads actually ridden on that ride, checked by eye in a GeoJSON
   viewer, and one ride outside Rogaland gets its roads fetched and
-  matched.
+  matched. Done.
 - **Phase 2, map.** `pnpm dev` shows ridden and unridden roads with the
   two tiers told apart, percent per kommune and for Rogaland, and a
   per-ride list with new km. Done when the last ten rides show plausible
-  new-km numbers.
+  new-km numbers. Done: all of Rogaland plus outside loads in about 8 s,
+  and three of the last ten rides were checked against their tracks.
 - **Phase 3, route builder.** Click start, choose distance, get a loop.
   Done when a generated 40 km loop has at least half its length on
   unridden countable roads, downloads as GPX, and loads on the Garmin.
@@ -111,6 +123,6 @@ Each phase ends on a checkable criterion.
 
 - Exact tier map: unknown until the data is on a map. `service` roads
   (driveways, parking aisles) are the likely argument.
-- `edges.json` for all of Rogaland is about 150 MB as one GeoJSON file,
-  too big for the browser to load whole. Phase 2 input: per-kommune
-  files, 5-decimal coordinates, short property names.
+- Data size: the edge files are about 120 MB in all and the first full
+  view takes about 8 s. Fine locally; a published site (phase 4) may want
+  vector tiles (PMTiles) instead.

@@ -111,6 +111,11 @@ export const PATHS = {
   activities: "cache/activities",
   manifest: "cache/activities/manifest.json",
   roads: "cache/roads",
-  edgesOut: "web/public/data/edges.json",
+  /** One edge file per kommune, <slug>.json */
+  kommunerOut: "web/public/data/kommuner",
+  /** Edges with no kommune (fetched for rides outside the region) */
+  outsideOut: "web/public/data/outside.json",
+  /** One thinned track per ride, <activity id>.json, loaded when a ride is selected */
+  tracksOut: "web/public/data/tracks",
   statsOut: "web/public/data/stats.json",
 };
