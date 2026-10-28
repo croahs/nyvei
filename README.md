@@ -78,8 +78,15 @@ First time: `pnpm exec wrangler login`, then
 After that, publishing from this machine is:
 
 ```bash
-pnpm rides && pnpm match && pnpm writeback && pnpm build && pnpm pages
+pnpm rides
+pnpm ship
+pnpm writeback
 ```
+
+`pnpm ship` runs match, build and pages in one go, and works in any shell
+(Windows PowerShell 5.1 has no `&&`). It stops at match when
+`PRIVACY_ZONE` is missing. Writeback comes last because it reads the
+numbers match just wrote.
 
 `pnpm writeback` puts each ride's new km into its Intervals.icu activity
 description as a `nyvei:` line (`--dry-run` shows what it would change,
