@@ -261,7 +261,9 @@ async function main(): Promise<void> {
       "PRIVACY_ZONE is not set, so nothing is written under web/public/data/. Set it in .env as lat,lon,radius_m, or pass --no-zone for a local-only run.",
     );
   }
-  const inZone = (p: LonLat): boolean => zone !== null && haversine(p, [zone.lon, zone.lat]) <= zone.radiusM;
+  // 2 m margin: published coordinates are rounded to 5 decimals (under 1 m), so a
+  // point tested just outside the circle could otherwise be written just inside it.
+  const inZone = (p: LonLat): boolean => zone !== null && haversine(p, [zone.lon, zone.lat]) <= zone.radiusM + 2;
   const unknown = slugs.filter((s) => !KOMMUNER.some((k) => k.slug === s));
   if (unknown.length) throw new Error(`unknown kommune slug(s): ${unknown.join(", ")}`);
   const targets = slugs.length ? KOMMUNER.filter((k) => slugs.includes(k.slug)) : KOMMUNER;

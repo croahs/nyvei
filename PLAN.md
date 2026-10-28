@@ -153,8 +153,9 @@ Each phase ends on a checkable criterion.
 - **Phase 4, publish.** Privacy zone, Cloudflare Pages, nightly GitHub
   Action. Done when `pnpm pages` puts the map on the pages.dev URL with
   no published edge or track point inside the zone (checked with a
-  script against a test point). Built; the first deploy and the Action
-  (blocked on Actions billing) are open.
+  script against a test point). Live at https://nyvei.pages.dev, checked
+  with a script against the real zone (0 published points inside); the
+  Action is blocked on GitHub Actions billing.
 
 ## Open questions
 
