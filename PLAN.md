@@ -54,6 +54,7 @@ pipeline/            pnpm scripts, run locally
   match.ts           tracks x edges -> web/public/data/kommuner/<slug>.json,
                      outside/<box>.json, tracks/<id>.json, stats.json
                      (fetches cache/roads/ride-<id>.json for rides outside the region)
+  writeback.ts       stats.json -> one "nyvei:" line per activity description on Intervals.icu
 web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
 ```
@@ -99,6 +100,13 @@ its worker, so the main thread only reads `stats.json`. Basemap is
 OpenFreeMap Positron, no key. Selecting a ride loads its thinned track
 from `tracks/<id>.json` and highlights its first-ridden edges, solid
 where they count as its new km.
+
+**writeback.** Each ride's new km goes back to Intervals.icu as one line
+in the activity description, `nyvei: 2.5 km ny vei · 8.2 km ny sti`,
+replaced in place when the numbers change. A state file under `cache/`
+keeps reruns from touching rides already written. A custom activity
+field would be chartable, but none exists yet; the line works without
+setup.
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
 so loops prefer roads but may use a track to reach one. The graph (nodes

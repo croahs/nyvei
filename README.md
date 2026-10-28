@@ -18,6 +18,8 @@ not. Static site, no backend, no accounts.
    kommune, and new kilometres per ride.
 5. **route**: pick a start and a distance in the browser, get a loop that
    prefers unridden roads, download it as GPX.
+6. **writeback**: each ride's new km goes back into its Intervals.icu
+   activity description.
 
 See [PLAN.md](PLAN.md) for decisions, phases and open questions.
 
@@ -76,8 +78,12 @@ First time: `pnpm exec wrangler login`, then
 After that, publishing from this machine is:
 
 ```bash
-pnpm rides && pnpm match && pnpm build && pnpm pages
+pnpm rides && pnpm match && pnpm writeback && pnpm build && pnpm pages
 ```
+
+`pnpm writeback` puts each ride's new km into its Intervals.icu activity
+description as a `nyvei:` line (`--dry-run` shows what it would change,
+`--limit N` stops after N rides).
 
 The `Publish` workflow (`.github/workflows/publish.yml`) does the same
 nightly, on every push to `main`, and on demand from the Actions tab. It
