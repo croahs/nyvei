@@ -19,17 +19,20 @@ interface Group {
   id: string;
   filter: ExpressionSpecification;
   color: string;
+  /** Desaturated color while a ride is selected, so its own roads stand out. */
+  muted?: string;
   width: number;
   dash?: number[];
 }
 const GROUPS: Group[] = [
   { id: "bonus", filter: ["all", ["!", ridden], ["!", countable]], color: "#9aa2ab", width: 0.8, dash: [2, 2] },
   { id: "road", filter: ["all", ["!", ridden], countable], color: "#6f7a87", width: 1.3 },
-  { id: "bonus-ridden", filter: ["all", ridden, ["!", countable]], color: "#8b3fd9", width: 1.4 },
-  { id: "road-ridden", filter: ["all", ridden, countable], color: "#e8590c", width: 2.4 },
+  { id: "bonus-ridden", filter: ["all", ridden, ["!", countable]], color: "#8b3fd9", muted: "#c9bdd6", width: 1.4 },
+  { id: "road-ridden", filter: ["all", ridden, countable], color: "#e8590c", muted: "#dcc3b5", width: 2.4 },
 ];
 const NEW_GROUP = "new";
 const NO_RIDE: ExpressionSpecification = ["==", ["get", P.firstActivity], ""];
+const RIDDEN_COLOR = GROUPS.find((g) => g.id === "road-ridden")!.color;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const km = (n: number) => n.toFixed(1);
@@ -53,6 +56,7 @@ let selected: string | null = null;
 let route: RoutePanel | undefined;
 const started = performance.now();
 
+const groupColor = (g: Group) => (selected && g.muted) || g.color;
 const interactive = () => [...loaded].flatMap((k) => [...GROUPS.map((g) => `${g.id}-${k}`), `${NEW_GROUP}-${k}`]);
 
 function setupLayers(): void {
@@ -60,7 +64,14 @@ function setupLayers(): void {
   for (const g of [...GROUPS.map((g) => g.id), NEW_GROUP]) map.addLayer({ id: `anchor-${g}`, type: "line", source: "anchors" });
   map.addSource("track", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addLayer(
-    { id: "track", type: "line", source: "track", paint: { "line-color": "#1d3f8f", "line-width": width(1.2), "line-dasharray": [3, 2] } },
+    // A selected ride's own track in ridden orange over the muted network; its new edges draw green on top.
+    {
+      id: "track",
+      type: "line",
+      source: "track",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": RIDDEN_COLOR, "line-width": width(2.4) },
+    },
     `anchor-${NEW_GROUP}`,
   );
 }
@@ -78,7 +89,7 @@ function addFile(f: EdgeFile): void {
         filter: g.filter,
         layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "line-color": g.color,
+          "line-color": groupColor(g),
           "line-width": width(g.width),
           ...(g.dash ? { "line-dasharray": g.dash } : {}),
         },
@@ -240,7 +251,10 @@ async function selectRide(r: RideStats | null): Promise<void> {
   selected = r?.id ?? null;
   history.replaceState(null, "", r ? `?ride=${r.id}` : location.pathname);
   rideFilter = r ? ["==", ["get", P.firstActivity], r.id] : NO_RIDE;
-  for (const k of loaded) map.setFilter(`${NEW_GROUP}-${k}`, rideFilter);
+  for (const k of loaded) {
+    map.setFilter(`${NEW_GROUP}-${k}`, rideFilter);
+    for (const g of GROUPS) if (g.muted) map.setPaintProperty(`${g.id}-${k}`, "line-color", groupColor(g));
+  }
   for (const tr of document.querySelectorAll<HTMLElement>("#rides tr")) {
     const on = tr.dataset.id === selected;
     tr.classList.toggle("selected", on);
