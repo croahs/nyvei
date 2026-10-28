@@ -103,7 +103,8 @@ where they count as its new km.
 
 **writeback.** Each ride's new km goes back to Intervals.icu as one line
 in the activity description, `nyvei: 2.5 km ny vei · 8.2 km ny sti`,
-replaced in place when the numbers change. A state file under `cache/`
+replaced in place when the numbers change, with a `?ride=<id>` link to
+the site once `SITE_URL` is set. A state file under `cache/`
 keeps reruns from touching rides already written. A custom activity
 field would be chartable, but none exists yet; the line works without
 setup.
