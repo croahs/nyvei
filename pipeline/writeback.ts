@@ -1,6 +1,8 @@
 // pnpm writeback [--dry-run] [--limit N]: write each ride's new km into its
 // Intervals.icu activity, as one line in the description:
-//   nyvei: 2.5 km ny vei · 8.2 km ny sti
+//   nyvei: 2.5 km ny vei · 8.2 km ny sti https://<site>/?ride=<id>
+// The link opens the site on that ride; it is added once SITE_URL is set (in
+// .env or the environment), so no address is guessed before the site exists.
 // Idempotent: cache/activities/writeback.json remembers the line written per
 // ride, so reruns only touch rides whose numbers changed (a later ride cannot
 // change an earlier ride's new km, but a rematch after a rule change can).
@@ -39,7 +41,9 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-const line = (r: RideStats) => `nyvei: ${r.new_countable_km.toFixed(1)} km ny vei · ${r.new_bonus_km.toFixed(1)} km ny sti`;
+const siteUrl = process.env.SITE_URL?.trim().replace(/\/+$/, "");
+const line = (r: RideStats) =>
+  `nyvei: ${r.new_countable_km.toFixed(1)} km ny vei · ${r.new_bonus_km.toFixed(1)} km ny sti` + (siteUrl ? ` ${siteUrl}/?ride=${r.id}` : "");
 
 /** Fetch with Retry-After handling for 429, like rides.ts. */
 async function request(url: string, init?: RequestInit): Promise<Response> {

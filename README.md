@@ -83,7 +83,9 @@ pnpm rides && pnpm match && pnpm writeback && pnpm build && pnpm pages
 
 `pnpm writeback` puts each ride's new km into its Intervals.icu activity
 description as a `nyvei:` line (`--dry-run` shows what it would change,
-`--limit N` stops after N rides).
+`--limit N` stops after N rides). With `SITE_URL` set in `.env` (and as a
+repository variable for the workflow) the line ends with a link that
+opens the site on that ride, `?ride=<activity id>`.
 
 The `Publish` workflow (`.github/workflows/publish.yml`) does the same
 nightly, on every push to `main`, and on demand from the Actions tab. It

@@ -3,3 +3,4 @@ cache/
 .env
 dist/
 web/public/data/
+.playwright-cli/

@@ -3,6 +3,7 @@
 #
 # Secrets: INTERVALS_API_KEY, INTERVALS_ATHLETE_ID, PRIVACY_ZONE (lat,lon,radius_m),
 # CLOUDFLARE_API_TOKEN (Pages edit), CLOUDFLARE_ACCOUNT_ID.
+# Variable: SITE_URL (the published address, for the link in each activity).
 # Caches: ride GPX files and the writeback state accumulate across runs; road
 # data is kept and refreshed from Overpass on the first of each month.
 
@@ -62,6 +63,7 @@ jobs:
         run: pnpm writeback
         env:
           INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
+          SITE_URL: ${{ vars.SITE_URL }}
       - run: pnpm build
       - name: Deploy to Cloudflare Pages
         run: pnpm pages

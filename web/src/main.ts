@@ -234,11 +234,18 @@ function renderRides(): void {
   );
 }
 
+// The selected ride lives in the URL as ?ride=<id>, so a link (for one from the
+// Intervals.icu description) opens the site on that ride.
 async function selectRide(r: RideStats | null): Promise<void> {
   selected = r?.id ?? null;
+  history.replaceState(null, "", r ? `?ride=${r.id}` : location.pathname);
   rideFilter = r ? ["==", ["get", P.firstActivity], r.id] : NO_RIDE;
   for (const k of loaded) map.setFilter(`${NEW_GROUP}-${k}`, rideFilter);
-  for (const tr of document.querySelectorAll<HTMLElement>("#rides tr")) tr.classList.toggle("selected", tr.dataset.id === selected);
+  for (const tr of document.querySelectorAll<HTMLElement>("#rides tr")) {
+    const on = tr.dataset.id === selected;
+    tr.classList.toggle("selected", on);
+    if (on) tr.scrollIntoView({ block: "center" });
+  }
   const info = $("#ride-info");
   const track = map.getSource<maplibregl.GeoJSONSource>("track")!;
   if (!r) {
@@ -276,6 +283,9 @@ async function start(): Promise<void> {
   route = setupRoute(map, files);
   loadVisible();
   map.on("moveend", loadVisible);
+  const wanted = new URLSearchParams(location.search).get("ride");
+  const ride = stats.rides.find((r) => r.id === wanted);
+  if (ride) void selectRide(ride);
 }
 
 void start();
