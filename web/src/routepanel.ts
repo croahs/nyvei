@@ -45,6 +45,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   const next = $<HTMLButtonElement>("#route-next");
   const gpx = $<HTMLButtonElement>("#route-gpx");
   const kmInput = $<HTMLInputElement>("#route-km");
+  const roadsOnly = $<HTMLInputElement>("#route-roads");
   const status = $("#route-status");
   const result = $("#route-result");
 
@@ -71,7 +72,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     if (!(target > 0)) return;
     sentAt = performance.now();
     status.textContent = "Generating…";
-    send({ type: "loop", id: ++requestId, start, km: target, variant });
+    send({ type: "loop", id: ++requestId, start, km: target, variant, roadsOnly: roadsOnly.checked });
   };
 
   pick.addEventListener("click", () => {
@@ -87,6 +88,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     setStart([e.lngLat.lng, e.lngLat.lat]);
   });
   kmInput.addEventListener("change", () => (variant = 0));
+  roadsOnly.addEventListener("change", () => (variant = 0));
   go.addEventListener("click", () => {
     variant = 0;
     generate();

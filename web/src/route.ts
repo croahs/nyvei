@@ -3,7 +3,7 @@
 // Nodes are the OSM node ids at edge ends (`a`/`b`), edges are the features,
 // undirected. Edge cost = length × 4 when ridden × 2 when bonus (PLAN.md,
 // route), so the cheapest path prefers unridden roads and uses a track only to
-// reach one. A loop goes out to the best unridden cluster in reach and back
+// reach one. Roads only sets bonus edges to Infinity, so no path uses them. A loop goes out to the best unridden cluster in reach and back
 // with the outbound edges penalised again, so it closes without retracing.
 
 import { P } from "./data";
@@ -40,15 +40,23 @@ export interface Graph {
   edgeLen: Float64Array;
   edgeFlags: Uint8Array;
   edgeCost: Float64Array;
+  /** edgeCost with bonus edges at Infinity, for roads-only loops. */
+  roadCost: Float64Array;
   /** Geometry of edge e is coords[2 * coordStart[e] .. 2 * coordStart[e + 1]], from a to b. */
   coordStart: Int32Array;
   coords: Float64Array;
   /** Connected component of unridden countable edges, -1 for every other edge. */
   edgeCluster: Int32Array;
   clusters: number;
-  /** Connected component of the whole graph per node, and each component's length in metres. */
-  nodeComponent: Int32Array;
-  componentLen: Float64Array;
+  /** Connected components of the whole graph, and of countable edges only for roads-only loops. */
+  all: Components;
+  roads: Components;
+}
+
+interface Components {
+  /** Component per node, and each component's length in metres. */
+  node: Int32Array;
+  len: Float64Array;
 }
 
 /** Collects edge files one at a time so each parsed file can be dropped after `add`. */
@@ -102,6 +110,7 @@ export class GraphBuilder {
       const f = edgeFlags[e]!;
       edgeCost[e] = edgeLen[e]! * (f & RIDDEN ? RIDDEN_FACTOR : 1) * (f & COUNTABLE ? 1 : BONUS_FACTOR);
     }
+    const roadCost = edgeCost.map((c, e) => (edgeFlags[e]! & COUNTABLE ? c : Infinity));
 
     const adjStart = new Int32Array(nodes + 1);
     for (let e = 0; e < edges; e++) {
@@ -129,17 +138,21 @@ export class GraphBuilder {
       edgeCluster[e] = id;
     }
 
-    const componentRoot = unionFind(nodes, edges, edgeA, edgeB, () => true);
-    const nodeComponent = new Int32Array(nodes);
-    const componentId = new Map<number, number>();
-    for (let n = 0; n < nodes; n++) {
-      const root = componentRoot(n);
-      let id = componentId.get(root);
-      if (id === undefined) componentId.set(root, (id = componentId.size));
-      nodeComponent[n] = id;
-    }
-    const componentLen = new Float64Array(componentId.size);
-    for (let e = 0; e < edges; e++) componentLen[nodeComponent[edgeA[e]!]!]! += edgeLen[e]!;
+    // Components over the edges `use` accepts; a node no such edge touches is its own component of length 0.
+    const components = (use: (e: number) => boolean): Components => {
+      const root = unionFind(nodes, edges, edgeA, edgeB, use);
+      const node = new Int32Array(nodes);
+      const ids = new Map<number, number>();
+      for (let n = 0; n < nodes; n++) {
+        const r = root(n);
+        let id = ids.get(r);
+        if (id === undefined) ids.set(r, (id = ids.size));
+        node[n] = id;
+      }
+      const len = new Float64Array(ids.size);
+      for (let e = 0; e < edges; e++) if (use(e)) len[node[edgeA[e]!]!]! += edgeLen[e]!;
+      return { node, len };
+    };
 
     return {
       nodes,
@@ -153,12 +166,13 @@ export class GraphBuilder {
       edgeLen,
       edgeFlags,
       edgeCost,
+      roadCost,
       coordStart: Int32Array.from(this.coordStart),
       coords: Float64Array.from(this.coords),
       edgeCluster,
       clusters: clusterId.size,
-      nodeComponent,
-      componentLen,
+      all: components(() => true),
+      roads: components((e) => (edgeFlags[e]! & COUNTABLE) !== 0),
     };
   }
 }
@@ -284,7 +298,7 @@ function pathTo(g: Graph, tree: Tree, to: number): number[] {
 }
 
 /** Nearest node on a component with at least `minLen` metres of edges, so a stray fragment is never the start. */
-function snap(g: Graph, p: LonLat, minLen: number): number {
+function snap(g: Graph, comp: Components, p: LonLat, minLen: number): number {
   const kx = Math.cos((p[1] * Math.PI) / 180);
   let best = -1;
   let bestD = Infinity;
@@ -292,7 +306,7 @@ function snap(g: Graph, p: LonLat, minLen: number): number {
     const dx = (g.lon[n]! - p[0]) * kx;
     const dy = g.lat[n]! - p[1];
     const d = dx * dx + dy * dy;
-    if (d < bestD && g.componentLen[g.nodeComponent[n]!]! >= minLen) {
+    if (d < bestD && comp.len[comp.node[n]!]! >= minLen) {
       bestD = d;
       best = n;
     }
@@ -321,14 +335,16 @@ export interface Loop {
  * A loop of about `targetKm` from `start` through unridden roads. `variant`
  * picks the target cluster: 0 is the one with the most unridden countable km in
  * reach, each next one heads somewhere else, so "try another" walks the list.
+ * `roadsOnly` keeps the loop off tracks, paths and other bonus edges.
  */
-export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: number): Loop {
+export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: number, roadsOnly: boolean): Loop {
   const D = targetKm * 1000;
   const reach = D / 2;
-  const s = snap(g, start, D);
+  const baseCost = roadsOnly ? g.roadCost : g.edgeCost;
+  const s = snap(g, roadsOnly ? g.roads : g.all, start, D);
 
   // Out: cheapest paths from the start, cut at D/2.
-  const out = dijkstra(g, s, g.edgeCost, reach);
+  const out = dijkstra(g, s, baseCost, reach);
 
   // Unridden countable km per cluster inside that reach, and how far out each cluster goes.
   const clusterLen = new Float64Array(g.clusters);
@@ -423,7 +439,7 @@ export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: num
     tried.add(t);
     const outEdges = pathTo(g, out, t);
     // Back: the outbound edges cost the ridden factor once more.
-    const cost = g.edgeCost.slice();
+    const cost = baseCost.slice();
     for (const e of outEdges) cost[e]! *= RIDDEN_FACTOR;
     const back = dijkstra(g, t, cost, Infinity, s);
     if (!Number.isFinite(back.len[s]!)) continue;
