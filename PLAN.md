@@ -111,7 +111,9 @@ field would be chartable, but none exists yet; the line works without
 setup.
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
-so loops prefer roads but may use a track to reach one. The graph (nodes
+so loops prefer roads but may use a track to reach one. "Roads only"
+sets bonus edges to infinite cost and snaps the start to a component of
+countable edges, because many bonus ways are hard going on a bike. The graph (nodes
 are the `a`/`b` OSM node ids, edges undirected) is built in a Web Worker
 that fetches the edge files itself; that is faster than handing it
 MapLibre's parsed copy, because structured cloning 400k features blocks

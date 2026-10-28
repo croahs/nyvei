@@ -6,7 +6,7 @@
 
 import { GraphBuilder, makeLoop, type Graph, type Loop, type LonLat } from "./route";
 
-export type Request = { type: "load"; urls: string[] } | { type: "loop"; id: number; start: LonLat; km: number; variant: number };
+export type Request = { type: "load"; urls: string[] } | { type: "loop"; id: number; start: LonLat; km: number; variant: number; roadsOnly: boolean };
 
 export type Response =
   | { type: "progress"; done: number; of: number }
@@ -45,7 +45,7 @@ onmessage = async (e: MessageEvent<Request>) => {
     if (!graph) throw new Error("Graph not loaded.");
     const g = await graph;
     const t0 = performance.now();
-    const loop = makeLoop(g, m.start, m.km, m.variant);
+    const loop = makeLoop(g, m.start, m.km, m.variant, m.roadsOnly);
     post({ type: "loop", id: m.id, loop, ms: performance.now() - t0 });
   } catch (err) {
     post({ type: "error", id: m.id, message: err instanceof Error ? err.message : String(err) });
