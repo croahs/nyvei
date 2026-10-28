@@ -1,7 +1,8 @@
 # Rebuilds the site data from Intervals.icu and OpenStreetMap and publishes it
-# to GitHub Pages: nightly, on every push to main, and on demand.
+# to Cloudflare Pages: nightly, on every push to main, and on demand.
 #
-# Secrets: INTERVALS_API_KEY, INTERVALS_ATHLETE_ID, PRIVACY_ZONE (lat,lon,radius_m).
+# Secrets: INTERVALS_API_KEY, INTERVALS_ATHLETE_ID, PRIVACY_ZONE (lat,lon,radius_m),
+# CLOUDFLARE_API_TOKEN (Pages edit), CLOUDFLARE_ACCOUNT_ID.
 # Caches: ride GPX files accumulate across runs; road data is kept and refreshed
 # from Overpass on the first of each month.
 
@@ -16,15 +17,13 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: publish
   cancel-in-progress: false
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,20 +58,9 @@ jobs:
         run: pnpm match
         env:
           PRIVACY_ZONE: ${{ secrets.PRIVACY_ZONE }}
-      - name: Build site
-        run: pnpm build
+      - run: pnpm build
+      - name: Deploy to Cloudflare Pages
+        run: pnpm pages
         env:
-          NYVEI_BASE: /nyvei/
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: web/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

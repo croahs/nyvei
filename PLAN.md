@@ -38,9 +38,12 @@ makes loops through unridden roads and exports GPX.
   hatch. Edges with a point inside the circle are left out of the edge
   files (they still count in the stats), and tracks are cut where they
   enter it, so a track file is a list of segments.
-- **Published on GitHub Pages** by a GitHub Action that runs nightly and
-  on push: it fetches new rides, keeps the road cache, matches, builds and
-  deploys. The ride and road caches live in Actions cache, not in git.
+- **Published on Cloudflare Pages**, repo stays private. GitHub Pages
+  and Actions minutes are not available on this account's plan for a
+  private repo. `pnpm pages` deploys `web/dist` with wrangler, from this
+  machine or from the Publish workflow (nightly, on push, on demand) once
+  Actions minutes work. Cloudflare's 25 MB limit per file is why outside
+  edges are one file per ride box.
 
 ## Architecture
 
@@ -49,7 +52,7 @@ pipeline/            pnpm scripts, run locally
   rides.ts           Intervals.icu -> cache/activities/<id>.gpx (incremental by id)
   roads.ts           Overpass per kommune -> cache/roads/<kommune>.json
   match.ts           tracks x edges -> web/public/data/kommuner/<slug>.json,
-                     outside.json, tracks/<id>.json, stats.json
+                     outside/<box>.json, tracks/<id>.json, stats.json
                      (fetches cache/roads/ride-<id>.json for rides outside the region)
 web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
@@ -87,11 +90,11 @@ ride id. Stats: per kommune and total, countable km ridden over
 countable km, and per ride the new km split by tier (primary edges whose
 `first_activity` is that ride).
 
-**site.** Edges go out as one GeoJSON file per kommune plus `outside.json`,
+**site.** Edges go out as one GeoJSON file per kommune plus one per ride
+box outside the region (`outside/<box>.json`),
 5-decimal coordinates, one-letter property names (the map is in the
 header of `match.ts` and in `web/src/data.ts`); about 80 MB for Rogaland
-and 40 MB outside. The site loads a file when its bounding box (ride
-boxes for `outside.json`) enters the viewport and MapLibre parses it in
+and 40 MB outside. The site loads a file when its bounding box enters the viewport and MapLibre parses it in
 its worker, so the main thread only reads `stats.json`. Basemap is
 OpenFreeMap Positron, no key. Selecting a ride loads its thinned track
 from `tracks/<id>.json` and highlights its first-ridden edges, solid
@@ -138,10 +141,11 @@ Each phase ends on a checkable criterion.
   on unridden countable roads, routed in 40-70 ms after a 2-4 s graph
   build, and its GPX opens in a GPX viewer. Loading on the Garmin is
   still open.
-- **Phase 4, publish.** Privacy zone, nightly GitHub Action, GitHub Pages.
-  Done when the workflow is green and the Pages URL shows the map with
+- **Phase 4, publish.** Privacy zone, Cloudflare Pages, nightly GitHub
+  Action. Done when `pnpm pages` puts the map on the pages.dev URL with
   no published edge or track point inside the zone (checked with a
-  script against a test point).
+  script against a test point). Built; the first deploy and the Action
+  (blocked on Actions billing) are open.
 
 ## Open questions
 

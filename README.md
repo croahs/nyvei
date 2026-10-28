@@ -66,16 +66,27 @@ in a few seconds.
 
 ## Publishing
 
-The `Publish` workflow (`.github/workflows/publish.yml`) rebuilds the data
-and deploys the site to GitHub Pages nightly, on every push to `main`, and
-on demand from the Actions tab. It needs three repository secrets:
-`INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` and `PRIVACY_ZONE`
-(`lat,lon,radius_m`, the circle around home that published data never
-points at). Ride GPX files and road data are kept in the Actions cache
-between runs; roads are refreshed from Overpass on the first of the month.
+The site lives on Cloudflare Pages (project `nyvei`). `pnpm match` needs
+`PRIVACY_ZONE` in `.env` (`lat,lon,radius_m`, the circle around home that
+published data never points at), or `--no-zone` for data that stays on
+this machine.
 
-Locally, `pnpm match` needs `PRIVACY_ZONE` in `.env` too, or `--no-zone`
-for data that stays on this machine.
+First time: `pnpm exec wrangler login`, then
+`pnpm exec wrangler pages project create nyvei --production-branch main`.
+After that, publishing from this machine is:
+
+```bash
+pnpm rides && pnpm match && pnpm build && pnpm pages
+```
+
+The `Publish` workflow (`.github/workflows/publish.yml`) does the same
+nightly, on every push to `main`, and on demand from the Actions tab. It
+needs five repository secrets: `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`,
+`PRIVACY_ZONE`, `CLOUDFLARE_API_TOKEN` (a token with Cloudflare Pages
+edit) and `CLOUDFLARE_ACCOUNT_ID`. Ride GPX files and road data are kept
+in the Actions cache between runs; roads are refreshed from Overpass on
+the first of the month. Actions on a private repo use paid minutes, so
+the workflow runs only once billing on the GitHub account is in order.
 
 ## Status
 

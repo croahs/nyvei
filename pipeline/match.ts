@@ -18,7 +18,7 @@
 // whose nearest edge it is cover 80 % (so new km per ride counts the way
 // actually ridden, not its neighbours).
 //
-// Edge files (kommuner/<slug>.json, outside.json) are GeoJSON FeatureCollections
+// Edge files (kommuner/<slug>.json, outside/<box>.json) are GeoJSON FeatureCollections
 // of LineStrings with 5-decimal coordinates and short property names:
 //   i  edge id, `<way id>_<index>`       a  OSM node id at the start (`from`)
 //   b  OSM node id at the end (`to`)     c  1 countable, 0 bonus
@@ -26,7 +26,9 @@
 //   l  length in metres                  d  first ridden date, absent when unridden
 //   r  first activity id, absent when unridden
 //   p  1 when the first ride counted the edge as new km (primary), else absent
-// The kommune is the file name. web/src/data.ts mirrors this mapping.
+// The kommune is the file name; outside files are numbered like the ride boxes
+// in stats.json. Files stay under 25 MB, Cloudflare Pages' limit per file.
+// web/src/data.ts mirrors this mapping.
 
 import { readFileSync, rmSync } from "node:fs";
 import Flatbush from "flatbush";
@@ -377,9 +379,24 @@ async function main(): Promise<void> {
     rides,
   };
 
-  // Edge files grouped by kommune; see the property map at the top of this file.
-  // Edges touching the privacy zone are left out; they still count in the stats above.
-  const byKommune = new Map<string | null, unknown[]>();
+  // Edge files grouped by kommune, or by ride box for edges outside the region;
+  // see the property map at the top of this file. Edges touching the privacy
+  // zone are left out; they still count in the stats above.
+  const outsideBoxes = rideRoads.map((r) => r.bbox);
+  const outsideFile = (e: Edge): string => {
+    let i = outsideBoxes.findIndex((b) => e.coords.some((p) => bboxContains(b, p)));
+    if (i < 0) {
+      // Overpass returns ways that only touch the box; file them with the nearest box.
+      const [lon, lat] = e.coords[0]!;
+      let bestD = Infinity;
+      outsideBoxes.forEach((b, j) => {
+        const d = Math.hypot((b.minLon + b.maxLon) / 2 - lon, (b.minLat + b.maxLat) / 2 - lat);
+        if (d < bestD) (bestD = d), (i = j);
+      });
+    }
+    return `${PATHS.outsideOut}/${i}.json`;
+  };
+  const byFile = new Map<string, unknown[]>();
   let zonedEdges = 0;
   for (const e of edges) {
     if (e.coords.some(inZone)) {
@@ -387,8 +404,9 @@ async function main(): Promise<void> {
       continue;
     }
     const r = ridden.get(e.id);
-    let list = byKommune.get(e.kommune);
-    if (!list) byKommune.set(e.kommune, (list = []));
+    const file = e.kommune === null ? outsideFile(e) : `${PATHS.kommunerOut}/${e.kommune}.json`;
+    let list = byFile.get(file);
+    if (!list) byFile.set(file, (list = []));
     list.push({
       type: "Feature",
       geometry: { type: "LineString", coordinates: e.coords.map(([lon, lat]) => [round5(lon), round5(lat)]) },
@@ -406,15 +424,12 @@ async function main(): Promise<void> {
       },
     });
   }
-  // Clear the old output first so a shorter kommune list or the pre-phase-2 edges.json leaves nothing stale.
-  for (const path of [PATHS.kommunerOut, PATHS.tracksOut, PATHS.outsideOut, "web/public/data/edges.json"]) {
+  // Clear the old output first so a shorter kommune list or an older layout leaves nothing stale.
+  for (const path of [PATHS.kommunerOut, PATHS.tracksOut, PATHS.outsideOut, "web/public/data/edges.json", "web/public/data/outside.json"]) {
     rmSync(path, { recursive: true, force: true });
   }
   let edgesBytes = 0;
-  for (const [kommune, features] of byKommune) {
-    const path = kommune === null ? PATHS.outsideOut : `${PATHS.kommunerOut}/${kommune}.json`;
-    edgesBytes += writeJson(path, { type: "FeatureCollection", features });
-  }
+  for (const [path, features] of byFile) edgesBytes += writeJson(path, { type: "FeatureCollection", features });
 
   // Tracks for the ride highlight, thinned to a point every 10 m and cut where
   // they enter the privacy zone, so each file is a list of segments.
@@ -447,7 +462,7 @@ async function main(): Promise<void> {
       `${stats.total.outside_ridden_km.countable + stats.total.outside_ridden_km.bonus} km outside the region`,
   );
   console.log(
-    `${byKommune.size} edge files ${mb(edgesBytes)}, ${tracks.length} tracks ${mb(trackBytes)}, ` +
+    `${byFile.size} edge files ${mb(edgesBytes)}, ${tracks.length} tracks ${mb(trackBytes)}, ` +
       `${PATHS.statsOut} ${mb(statsBytes)}, ${((Date.now() - started) / 1000).toFixed(0)} s`,
   );
 }

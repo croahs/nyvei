@@ -13,6 +13,7 @@
     "match": "tsx pipeline/match.ts",
     "dev": "vite web",
     "build": "tsc --noEmit -p web && vite build web",
+    "pages": "wrangler pages deploy web/dist --project-name nyvei",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "@types/node": "^24.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "wrangler": "^4.153.0"
   }
 }
