@@ -11,6 +11,7 @@
     "rides": "tsx pipeline/rides.ts",
     "roads": "tsx pipeline/roads.ts",
     "match": "tsx pipeline/match.ts",
+    "writeback": "tsx pipeline/writeback.ts",
     "dev": "vite web",
     "build": "tsc --noEmit -p web && vite build web",
     "pages": "wrangler pages deploy web/dist --project-name nyvei",

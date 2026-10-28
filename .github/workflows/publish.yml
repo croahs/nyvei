@@ -3,8 +3,8 @@
 #
 # Secrets: INTERVALS_API_KEY, INTERVALS_ATHLETE_ID, PRIVACY_ZONE (lat,lon,radius_m),
 # CLOUDFLARE_API_TOKEN (Pages edit), CLOUDFLARE_ACCOUNT_ID.
-# Caches: ride GPX files accumulate across runs; road data is kept and refreshed
-# from Overpass on the first of each month.
+# Caches: ride GPX files and the writeback state accumulate across runs; road
+# data is kept and refreshed from Overpass on the first of each month.
 
 name: Publish
 
@@ -58,6 +58,10 @@ jobs:
         run: pnpm match
         env:
           PRIVACY_ZONE: ${{ secrets.PRIVACY_ZONE }}
+      - name: Write new km into the Intervals.icu activities
+        run: pnpm writeback
+        env:
+          INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
       - run: pnpm build
       - name: Deploy to Cloudflare Pages
         run: pnpm pages
