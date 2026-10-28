@@ -71,7 +71,10 @@ in a few seconds.
 The site lives on Cloudflare Pages (project `nyvei`). `pnpm match` needs
 `PRIVACY_ZONE` in `.env` (`lat,lon,radius_m`, the circle around home that
 published data never points at), or `--no-zone` for data that stays on
-this machine.
+this machine. To pick it, run `pnpm dev` and open
+http://localhost:5173/zone.html: click home, set the radius against your
+ride start and end points, and copy the line. The page is dev-only and
+not part of the build.
 
 First time: `pnpm exec wrangler login`, then
 `pnpm exec wrangler pages project create nyvei --production-branch main`.
