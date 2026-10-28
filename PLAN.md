@@ -31,9 +31,16 @@ makes loops through unridden roads and exports GPX.
 - **Stack:** Node + TypeScript (`tsx`) for the pipeline, Vite + MapLibre
   GL JS for the site, `flatbush` for the spatial index. Routing runs in
   the browser over the same edge graph; no routing server.
-- **Privacy:** ridden roads reveal where I live. The site is local-first
-  (`pnpm dev`). Publishing anywhere requires a privacy zone that drops
-  edges near home from the published data.
+- **Privacy:** ridden roads reveal where I live, so published data never
+  points at home. `PRIVACY_ZONE` (lat,lon,radius_m; 100 m to start) lives
+  in `.env` locally and as a repository secret in CI. `pnpm match` refuses
+  to write without it; `--no-zone` is the explicit local-only escape
+  hatch. Edges with a point inside the circle are left out of the edge
+  files (they still count in the stats), and tracks are cut where they
+  enter it, so a track file is a list of segments.
+- **Published on GitHub Pages** by a GitHub Action that runs nightly and
+  on push: it fetches new rides, keeps the road cache, matches, builds and
+  deploys. The ride and road caches live in Actions cache, not in git.
 
 ## Architecture
 
@@ -131,8 +138,10 @@ Each phase ends on a checkable criterion.
   on unridden countable roads, routed in 40-70 ms after a 2-4 s graph
   build, and its GPX opens in a GPX viewer. Loading on the Garmin is
   still open.
-- **Phase 4, optional.** Scheduled GitHub Action with the API key as a
-  secret that regenerates data. Privacy zone and GitHub Pages deploy.
+- **Phase 4, publish.** Privacy zone, nightly GitHub Action, GitHub Pages.
+  Done when the workflow is green and the Pages URL shows the map with
+  no published edge or track point inside the zone (checked with a
+  script against a test point).
 
 ## Open questions
 
@@ -143,5 +152,8 @@ Each phase ends on a checkable criterion.
   Stavanger and back) rather than round. A cost on edges near the
   outbound path would widen them; BRouter is the bigger step.
 - Data size: the edge files are about 120 MB in all and the first full
-  view takes about 8 s. Fine locally; a published site (phase 4) may want
-  vector tiles (PMTiles) instead.
+  view takes about 8 s. Vector tiles (PMTiles) would cut that on the
+  published site.
+- Zone radius: 100 m hides the house but every ride still starts and ends
+  at the circle's edge, which points at the block. Strava uses 200 m to
+  1 km. One number in the secret to change.

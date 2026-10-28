@@ -3,6 +3,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { INTERVALS_URL, OLDEST, PATHS, RIDE_TYPES, USER_AGENT } from "./config";
+import { loadEnv } from "./lib/env";
 import { gpxPath, loadManifest, saveManifest, type ManifestEntry } from "./lib/manifest";
 
 interface Activity {
@@ -21,15 +22,11 @@ const PAGE = 500;
 const CONCURRENCY = 2;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-if (!existsSync(".env")) {
-  console.error("Missing .env. Copy .env.example to .env and fill in INTERVALS_API_KEY and INTERVALS_ATHLETE_ID.");
-  process.exit(1);
-}
-process.loadEnvFile(".env");
+loadEnv();
 const key = process.env.INTERVALS_API_KEY;
 const athlete = process.env.INTERVALS_ATHLETE_ID;
 if (!key || !athlete) {
-  console.error("INTERVALS_API_KEY and INTERVALS_ATHLETE_ID must both be set in .env.");
+  console.error("INTERVALS_API_KEY and INTERVALS_ATHLETE_ID must both be set, in .env (copy .env.example) or the environment.");
   process.exit(1);
 }
 const headers = {
