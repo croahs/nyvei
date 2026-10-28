@@ -1,6 +1,6 @@
 // Loader for the files pipeline/match.ts writes under public/data/.
 //
-// Edge files (kommuner/<slug>.json, outside.json) are GeoJSON LineStrings with
+// Edge files (kommuner/<slug>.json, outside/<box>.json) are GeoJSON LineStrings with
 // short property names, mirrored from the comment at the top of match.ts:
 //   i id, a from node, b to node, c 1 countable / 0 bonus, h highway, n name,
 //   l length (m), d first ridden date, r first activity id, p 1 if counted as
@@ -81,7 +81,7 @@ export function edgeFiles(stats: Stats): EdgeFile[] {
   for (const [slug, k] of Object.entries(stats.kommuner)) {
     if (k.bbox) files.push({ key: slug, url: `${base}/kommuner/${slug}.json`, boxes: [k.bbox] });
   }
-  if (stats.outside.boxes.length) files.push({ key: "outside", url: `${base}/outside.json`, boxes: stats.outside.boxes });
+  stats.outside.boxes.forEach((box, i) => files.push({ key: `outside-${i}`, url: `${base}/outside/${i}.json`, boxes: [box] }));
   return files;
 }
 

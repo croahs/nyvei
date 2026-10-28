@@ -113,8 +113,8 @@ export const PATHS = {
   roads: "cache/roads",
   /** One edge file per kommune, <slug>.json */
   kommunerOut: "web/public/data/kommuner",
-  /** Edges with no kommune (fetched for rides outside the region) */
-  outsideOut: "web/public/data/outside.json",
+  /** Edges with no kommune (fetched for rides outside the region), one file per ride box: <index>.json */
+  outsideOut: "web/public/data/outside",
   /** One thinned track per ride, <activity id>.json, loaded when a ride is selected */
   tracksOut: "web/public/data/tracks",
   statsOut: "web/public/data/stats.json",
