@@ -15,6 +15,7 @@
     "dev": "vite web",
     "build": "tsc --noEmit -p web && vite build web",
     "pages": "wrangler pages deploy web/dist --project-name nyvei",
+    "ship": "pnpm match && pnpm build && pnpm pages",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web"
   },
   "dependencies": {
