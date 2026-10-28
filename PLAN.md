@@ -32,12 +32,13 @@ makes loops through unridden roads and exports GPX.
   GL JS for the site, `flatbush` for the spatial index. Routing runs in
   the browser over the same edge graph; no routing server.
 - **Privacy:** ridden roads reveal where I live, so published data never
-  points at home. `PRIVACY_ZONE` (lat,lon,radius_m; 100 m to start) lives
+  points at home. `PRIVACY_ZONE` (lat,lon,radius_m) lives
   in `.env` locally and as a repository secret in CI. `pnpm match` refuses
   to write without it; `--no-zone` is the explicit local-only escape
   hatch. Edges with a point inside the circle are left out of the edge
   files (they still count in the stats), and tracks are cut where they
-  enter it, so a track file is a list of segments.
+  enter it, so a track file is a list of segments. The radius is 100 m
+  by choice, knowing that ride ends still ring the block around it.
 - **Published on Cloudflare Pages**, repo stays private. GitHub Pages
   and Actions minutes are not available on this account's plan for a
   private repo. `pnpm pages` deploys `web/dist` with wrangler, from this
@@ -168,6 +169,3 @@ Each phase ends on a checkable criterion.
 - Data size: the edge files are about 120 MB in all and the first full
   view takes about 8 s. Vector tiles (PMTiles) would cut that on the
   published site.
-- Zone radius: 100 m hides the house but every ride still starts and ends
-  at the circle's edge, which points at the block. Strava uses 200 m to
-  1 km. One number in the secret to change.
