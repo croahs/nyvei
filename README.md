@@ -64,7 +64,21 @@ direction where there is one; **Download GPX** saves the loop as a GPX
 1.1 track. The route graph builds in the background while the map loads,
 in a few seconds.
 
+## Publishing
+
+The `Publish` workflow (`.github/workflows/publish.yml`) rebuilds the data
+and deploys the site to GitHub Pages nightly, on every push to `main`, and
+on demand from the Actions tab. It needs three repository secrets:
+`INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID` and `PRIVACY_ZONE`
+(`lat,lon,radius_m`, the circle around home that published data never
+points at). Ride GPX files and road data are kept in the Actions cache
+between runs; roads are refreshed from Overpass on the first of the month.
+
+Locally, `pnpm match` needs `PRIVACY_ZONE` in `.env` too, or `--no-zone`
+for data that stays on this machine.
+
 ## Status
 
-Phases 1 (pipeline) and 2 (map) done. Phase 3 (route builder) is built;
-loading a GPX on the Garmin is still to be checked.
+Phases 1 (pipeline), 2 (map) and 3 (route builder) done; phase 4
+(publishing) is set up. Loading a GPX on the Garmin is still to be
+checked.

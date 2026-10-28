@@ -249,9 +249,10 @@ async function selectRide(r: RideStats | null): Promise<void> {
   info.hidden = false;
   $("#ride-name").textContent = `${r.date.slice(0, 10)} ${r.name}`;
   $("#ride-new").textContent = `${km(r.new_countable_km)} km new countable, ${km(r.new_bonus_km)} km new bonus of ${km(r.distance_km)} km`;
-  const coords = await loadTrack(r.id);
+  const segments = await loadTrack(r.id);
+  const coords = segments.flat();
   if (selected !== r.id || coords.length < 2) return;
-  track.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } });
+  track.setData({ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: segments } });
   const bounds = new maplibregl.LngLatBounds(coords[0], coords[0]);
   for (const c of coords) bounds.extend(c);
   map.fitBounds(bounds, { padding: 40, maxZoom: 15 });

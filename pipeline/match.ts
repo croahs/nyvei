@@ -1,6 +1,11 @@
-// pnpm match [slug ...] [--skip-outside]: match every cached ride against the
-// road edges and write the site's data under web/public/data/: one edge file
-// per kommune, outside.json, one track per ride and stats.json.
+// pnpm match [slug ...] [--skip-outside] [--no-zone]: match every cached ride
+// against the road edges and write the site's data under web/public/data/: one
+// edge file per kommune, outside.json, one track per ride and stats.json.
+//
+// Published data never points at home: PRIVACY_ZONE (lat,lon,radius_m, from
+// .env or the environment) drops every edge with a point inside the circle
+// from the edge files and cuts the tracks there. Without it, match refuses to
+// write; --no-zone is the explicit escape hatch for a local-only run.
 //
 // Pass 1 makes sure every ride has roads: points outside the loaded kommuner
 // (and outside earlier ride boxes) get an Overpass fetch for their bounding
@@ -41,6 +46,7 @@ import {
   type Polygon,
   type XY,
 } from "./lib/geo";
+import { loadEnv, privacyZone } from "./lib/env";
 import { mb, parseArgs, writeJson } from "./lib/fs";
 import { parseGpxTrack } from "./lib/gpx";
 import { gpxPath, loadManifest, ridesWithGpx, type ManifestEntry } from "./lib/manifest";
@@ -246,6 +252,14 @@ function matchRide(track: Track, edges: Edge[], index: Flatbush, ridden: Map<str
 async function main(): Promise<void> {
   const started = Date.now();
   const { slugs, flags } = parseArgs(process.argv.slice(2));
+  loadEnv();
+  const zone = flags.has("no-zone") ? null : privacyZone();
+  if (zone === undefined) {
+    throw new Error(
+      "PRIVACY_ZONE is not set, so nothing is written under web/public/data/. Set it in .env as lat,lon,radius_m, or pass --no-zone for a local-only run.",
+    );
+  }
+  const inZone = (p: LonLat): boolean => zone !== null && haversine(p, [zone.lon, zone.lat]) <= zone.radiusM;
   const unknown = slugs.filter((s) => !KOMMUNER.some((k) => k.slug === s));
   if (unknown.length) throw new Error(`unknown kommune slug(s): ${unknown.join(", ")}`);
   const targets = slugs.length ? KOMMUNER.filter((k) => slugs.includes(k.slug)) : KOMMUNER;
@@ -364,8 +378,14 @@ async function main(): Promise<void> {
   };
 
   // Edge files grouped by kommune; see the property map at the top of this file.
+  // Edges touching the privacy zone are left out; they still count in the stats above.
   const byKommune = new Map<string | null, unknown[]>();
+  let zonedEdges = 0;
   for (const e of edges) {
+    if (e.coords.some(inZone)) {
+      zonedEdges++;
+      continue;
+    }
     const r = ridden.get(e.id);
     let list = byKommune.get(e.kommune);
     if (!list) byKommune.set(e.kommune, (list = []));
@@ -396,13 +416,29 @@ async function main(): Promise<void> {
     edgesBytes += writeJson(path, { type: "FeatureCollection", features });
   }
 
-  // Tracks for the ride highlight, thinned to a point every 10 m.
+  // Tracks for the ride highlight, thinned to a point every 10 m and cut where
+  // they enter the privacy zone, so each file is a list of segments.
   let trackBytes = 0;
+  let zonedPoints = 0;
   for (const { ride, points } of tracks) {
     const kept: LonLat[] = [points[0]!];
     for (const p of points) if (haversine(kept[kept.length - 1]!, p) >= 10) kept.push(p);
-    trackBytes += writeJson(`${PATHS.tracksOut}/${ride.id}.json`, kept.map(([lon, lat]) => [round5(lon), round5(lat)]));
+    const segments: number[][][] = [];
+    let segment: number[][] = [];
+    for (const p of kept) {
+      if (inZone(p)) {
+        zonedPoints++;
+        if (segment.length > 1) segments.push(segment);
+        segment = [];
+        continue;
+      }
+      segment.push([round5(p[0]), round5(p[1])]);
+    }
+    if (segment.length > 1) segments.push(segment);
+    trackBytes += writeJson(`${PATHS.tracksOut}/${ride.id}.json`, segments);
   }
+  if (zone) console.log(`privacy zone ${zone.radiusM} m: ${zonedEdges} edges and ${zonedPoints} track points left out`);
+  else console.log("no privacy zone (--no-zone): this data is for local use only");
   const statsBytes = writeJson(PATHS.statsOut, stats, true);
 
   console.log(

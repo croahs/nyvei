@@ -1,0 +1,78 @@
+# Rebuilds the site data from Intervals.icu and OpenStreetMap and publishes it
+# to GitHub Pages: nightly, on every push to main, and on demand.
+#
+# Secrets: INTERVALS_API_KEY, INTERVALS_ATHLETE_ID, PRIVACY_ZONE (lat,lon,radius_m).
+# Caches: ride GPX files accumulate across runs; road data is kept and refreshed
+# from Overpass on the first of each month.
+
+name: Publish
+
+on:
+  schedule:
+    - cron: "30 1 * * *" # 02:30 or 03:30 Europe/Oslo
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Restore ride cache
+        uses: actions/cache@v4
+        with:
+          path: cache/activities
+          key: activities-${{ github.run_id }}
+          restore-keys: activities-
+      - name: Restore road cache
+        uses: actions/cache@v4
+        with:
+          path: cache/roads
+          key: roads-${{ github.run_id }}
+          restore-keys: roads-
+
+      - name: Fetch new rides
+        run: pnpm rides
+        env:
+          INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
+          INTERVALS_ATHLETE_ID: ${{ secrets.INTERVALS_ATHLETE_ID }}
+      - name: Fetch roads (refreshed on the 1st of the month)
+        run: pnpm roads $([ "$(date -u +%d)" = "01" ] && echo --refresh)
+      - name: Match rides to roads
+        run: pnpm match
+        env:
+          PRIVACY_ZONE: ${{ secrets.PRIVACY_ZONE }}
+      - name: Build site
+        run: pnpm build
+        env:
+          NYVEI_BASE: /nyvei/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

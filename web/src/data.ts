@@ -85,7 +85,8 @@ export function edgeFiles(stats: Stats): EdgeFile[] {
   return files;
 }
 
-export async function loadTrack(id: string): Promise<[number, number][]> {
+/** A ride's thinned track as segments: one, or more where the privacy zone cut it. */
+export async function loadTrack(id: string): Promise<[number, number][][]> {
   const res = await fetch(`${base}/tracks/${id}.json`);
   if (!res.ok) throw new Error(`track ${id}: HTTP ${res.status}`);
   return res.json();
