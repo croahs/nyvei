@@ -38,6 +38,23 @@ pnpm match   # -> web/public/data/ (edge files per kommune, tracks, stats.json)
 `pnpm match --skip-outside` matches without fetching roads for rides that
 leave the loaded kommuner, for runs with a partial kommune list.
 
+## Strava heat (from gravelheater)
+
+The map can show gravelheater's heat overlays (gravel and off-road from the
+Strava global heatmap), and the route builder can prefer roads other
+cyclists ride. Both need the raw heatmap tiles in `cache/heat/raw/`:
+
+1. Copy the four Strava cookies into `.env` (see `.env.example`; same names
+   as in gravelheater). They expire after about a day.
+2. `pnpm heat` downloads the three sport layers at zoom 15, about an hour
+   and 4 GB, resumable. Already have gravelheater's `tiles/`? Copy its
+   `gravel/`, `road/` and `mtb/` folders into `cache/heat/raw/` instead.
+3. `pnpm heat:tiles` builds the overlay tiles.
+4. `pnpm match` gives every edge its bike heat.
+
+The heat area is `HEAT.bbox` in `pipeline/config.ts`. Without heat tiles the
+site works as before, with no heat controls.
+
 ## Running the site
 
 After `pnpm match`:
@@ -61,7 +78,9 @@ map) or **Start at map centre**, choose a distance and press
 within half the distance and comes back another way, preferring
 unridden roads and using tracks only to reach them. The panel shows the
 loop's length, its unridden road and track km, and the share of the loop
-on unridden roads. **Try another** picks a different patch, in another
+on unridden roads. **Prefer bike heat** (shown once edges have heat) pulls the loop
+onto roads other cyclists ride; the panel shows how much of the loop is on
+them. **Try another** picks a different patch, in another
 direction where there is one; **Download GPX** saves the loop as a GPX
 1.1 track. The route graph builds in the background while the map loads,
 in a few seconds.
@@ -86,6 +105,11 @@ pnpm ship
 pnpm writeback
 ```
 
+Heat overlay tiles are derived Strava data and stay out of `pnpm build`
+unless `PUBLISH_HEAT=1` is set; set it only once the site is behind
+Cloudflare Access (Zero Trust → Access → Applications, as for
+gravelheater). Locally, `pnpm dev` always shows them.
+
 `pnpm ship` runs match, build and pages in one go, and works in any shell
 (Windows PowerShell 5.1 has no `&&`). It stops at match when
 `PRIVACY_ZONE` is missing. Writeback comes last because it reads the
@@ -108,6 +132,7 @@ the workflow runs only once billing on the GitHub account is in order.
 
 ## Status
 
-Phases 1 (pipeline), 2 (map) and 3 (route builder) done; phase 4
+Phases 1 (pipeline), 2 (map) and 3 (route builder) done; phase 5 (heat
+from gravelheater) built, waiting for a check on real tiles; phase 4
 (publishing) is set up. Loading a GPX on the Garmin is still to be
 checked.

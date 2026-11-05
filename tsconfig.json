@@ -9,5 +9,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["pipeline/**/*.ts"]
+  "include": ["pipeline/**/*.ts", "web/vite.config.ts"]
 }

@@ -119,3 +119,43 @@ export const PATHS = {
   tracksOut: "web/public/data/tracks",
   statsOut: "web/public/data/stats.json",
 };
+
+/**
+ * Strava global heatmap, merged in from gravelheater. Raw tiles are 512 px
+ * greyscale per sport layer; black is no data. Personal use only.
+ */
+export const HEAT = {
+  /** [west, south, east, north]. gravelheater's "sandnes" area: Egersund to Nord-Jæren and Suleskard. */
+  bbox: [5.5, 58.4, 7.0, 59.15] as [number, number, number, number],
+  /** Tile zoom; 15 is about 2.4 m/px here. `--zoom N` overrides. */
+  zoom: 15,
+  /** Lowest zoom of the overlay pyramid. */
+  minZoom: 9,
+  size: 512,
+  sports: { gravel: "sport_GravelRide", road: "sport_Ride", mtb: "sport_MountainBikeRide" } as Record<string, string>,
+  /** `missing=empty` returns a tiny transparent PNG instead of 404 where there is no data. */
+  tileUrl: (sport: string, z: number, x: number, y: number) =>
+    `https://content-a.strava.com/identified/globalheat/${sport}/grayscale/${z}/${x}/${y}.png?v=20&missing=empty`,
+  requestDelayMs: [100, 222] as [number, number],
+  concurrency: 4,
+  /** Below this a layer is noise (one lone ride). */
+  minSignal: 0.08,
+  /** road + epsilon in the gravel ratio denominator. */
+  epsilon: 0.05,
+  /** Display curve: any pixel with signal gets at least alphaFloor, the rest is lifted by alphaGamma (< 1 lifts). */
+  alphaFloor: 0.35,
+  alphaGamma: 0.5,
+  colors: { gravel: [250, 176, 5], offroad: [21, 170, 191] } as Record<string, [number, number, number]>,
+  /** Edge heat: a sample reads the brightest pixel within ± this many px (about ±5 m at zoom 15). */
+  windowPx: 2,
+  sampleM: 10,
+  /** Decoded raw tiles kept in memory while sampling edges. */
+  cacheTiles: 1500,
+};
+
+export const HEAT_PATHS = {
+  /** Raw Strava tiles, <layer>/<z>/<x>/<y>.png, same layout as gravelheater's tiles/. */
+  raw: "cache/heat/raw",
+  /** Overlay tiles and meta.json; served at /heat/ by web/vite.config.ts. */
+  tiles: "cache/heat/tiles",
+};

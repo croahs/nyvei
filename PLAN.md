@@ -2,7 +2,9 @@
 
 Goal: every ride is matched against the road network, a map shows ridden
 and unridden roads, coverage is counted per kommune, and a route builder
-makes loops through unridden roads and exports GPX.
+makes loops through unridden roads that other cyclists actually ride, and
+exports GPX. The map also carries gravelheater's Strava heat overlays; that
+project is merged in here.
 
 ## Decisions
 
@@ -39,6 +41,19 @@ makes loops through unridden roads and exports GPX.
   files (they still count in the stats), and tracks are cut where they
   enter it, so a track file is a list of segments. The radius is 100 m
   by choice, knowing that ride ends still ring the block around it.
+- **Strava heatmap, merged in from gravelheater.** The global heatmap
+  (sport layers Ride, GravelRide, MountainBikeRide) does two jobs. As
+  gravelheater's overlays, *gravel* (gravel − road) and *offroad* (mtb +
+  gravel − road), raster tiles on the map. And as *bike heat* per edge,
+  `t` 0..100, which the route builder uses to keep loops on roads people
+  ride, so a loop does not pick a road just because it is unridden. Tiles
+  are fetched with the cookies of a logged-in strava.com session, for
+  personal use only. They are derived Strava data: the overlay tiles go
+  into a build only with `PUBLISH_HEAT=1`, which is for once the site is
+  behind Cloudflare Access, as gravelheater was. The per-edge `t` numbers
+  are published with the edge files. Heat covers gravelheater's "sandnes"
+  box (Egersund to Nord-Jæren and Suleskard); edges outside it have no
+  heat and route as before.
 - **Published on Cloudflare Pages**, repo stays private. GitHub Pages
   and Actions minutes are not available on this account's plan for a
   private repo. `pnpm pages` deploys `web/dist` with wrangler, from this
@@ -56,6 +71,9 @@ pipeline/            pnpm scripts, run locally
                      outside/<box>.json, tracks/<id>.json, stats.json
                      (fetches cache/roads/ride-<id>.json for rides outside the region)
   writeback.ts       stats.json -> one "nyvei:" line per activity description on Intervals.icu
+  heat.ts            Strava heatmap -> cache/heat/raw/<layer>/<z>/<x>/<y>.png (resumable)
+  heattiles.ts       raw layers -> cache/heat/tiles/{gravel,offroad}/ + meta.json
+                     (match.ts reads cache/heat/raw for each edge's bike heat)
 web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
 ```
@@ -110,8 +128,26 @@ keeps reruns from touching rides already written. A custom activity
 field would be chartable, but none exists yet; the line works without
 setup.
 
+**heat.** `pnpm heat` downloads 512 px greyscale tiles at zoom 15
+(about 2.4 m/px) for the three sport layers, the layout gravelheater's
+`tiles/` already has, so those can be copied in. `pnpm heat:tiles` is
+gravelheater's compute step: per pixel, gravel = (g − r) × min(1, g /
+(r + 0.05)) where g ≥ 0.08 and g > r, else offroad = g + m − r where
+g + m ≥ 0.08 and > r; a pyramid of max-pooled parents down to zoom 9.
+Overlays draw gold (gravel) and cyan (offroad), off the colours nyvei
+already uses. `pnpm match` gives each edge its bike heat: every 10 m
+sample reads the brightest pixel of any layer within ±2 px, the end
+samples are dropped because the junction carries the joining road's heat,
+and `t` is the mean in percent. Strava normalises each layer on its own,
+so the max says how much the busiest group of cyclists uses the road. The
+site serves overlay tiles from `cache/heat/tiles` through a Vite plugin in
+dev; base maps (Positron, Kartverket topo and gråtone, OSM, OpenTopoMap)
+are a raster layer under everything, chosen in the panel.
+
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
-so loops prefer roads but may use a track to reach one. "Roads only"
+so loops prefer roads but may use a track to reach one, × (1 − k × heat)
+with heat = `t` / 100 and k the "prefer bike heat" slider (0 to 0.9,
+default 0.6), so with k = 0.6 the busiest road costs 0.4 of a dead one. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
 countable edges, because many bonus ways are hard going on a bike. The graph (nodes
 are the `a`/`b` OSM node ids, edges undirected) is built in a Web Worker
@@ -120,13 +156,15 @@ MapLibre's parsed copy, because structured cloning 400k features blocks
 the page for seconds. Given start and target distance D: Dijkstra from
 the start, cut at D/2 of path length; clusters are connected components
 of unridden countable edges, ranked by their countable km inside that
-reach, counting only clusters that reach at least 0.35 D out (a cluster
+reach (weighted by (1 − k + k × heat), so a busy cluster outranks a
+dead one), counting only clusters that reach at least 0.35 D out (a cluster
 next to the start cannot turn a loop of length D). In the chosen cluster
 the turnaround is the node at outbound length r that is cheapest per
 metre; Dijkstra back with the outbound edges × 4 again, then r is
 rescaled until out + back is within 5 % of D (at most 8 tries). "Try
 another" walks the clusters in rank order, discounting any within 45° of
-an earlier one's bearing so the next loop heads somewhere else. Export
+an earlier one's bearing so the next loop heads somewhere else. The panel
+shows the share of the loop on edges with heat ≥ 25. Export
 GPX 1.1. Own Dijkstra first; BRouter with nogo areas is the fallback if
 loops come out ugly.
 
@@ -160,6 +198,14 @@ Each phase ends on a checkable criterion.
   with a script against the real zone (0 published points inside); the
   Action is blocked on GitHub Actions billing.
 
+- **Phase 5, gravelheater merged in.** Heat overlays, base maps and bike
+  heat routing in this site. Done when, from Sandnes with real tiles, a
+  40 km loop with "prefer bike heat" on has most of its length on edges
+  with heat ≥ 25 and still half on unridden countable roads, checked
+  against the overlay on the map. Built and checked on a synthetic grid
+  with fake tiles (a 20 km loop went from 19 % to 96 % on busy edges
+  between k = 0 and 0.9); the real-data check is open.
+
 ## Open questions
 
 - Exact tier map: unknown until the data is on a map. `service` roads
@@ -171,3 +217,15 @@ Each phase ends on a checkable criterion.
 - Data size: the edge files are about 120 MB in all and the first full
   view takes about 8 s. Vector tiles (PMTiles) would cut that on the
   published site.
+- Heat publishing: the overlay tiles stay out of the published build
+  until nyvei.pages.dev is behind Cloudflare Access, which also puts the
+  whole site behind a login. The Publish workflow has no heat tiles (4 GB,
+  cookies that last a day), so a CI run would publish edges without `t`;
+  heat runs stay on this machine for now.
+- Heat calibration: whether `t` ≥ 25 is the right line for "roads
+  cyclists use", and whether k = 0.6 is the right default, needs the real
+  tiles on a screen.
+- Left behind in gravelheater: point-to-point routing through clicked
+  waypoints, surface share along a route, elevation profile, GPX import,
+  saved routes, place search and the second area (Stellenbosch). Port
+  them here if they are missed.

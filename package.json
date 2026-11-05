@@ -10,6 +10,8 @@
   "scripts": {
     "rides": "tsx pipeline/rides.ts",
     "roads": "tsx pipeline/roads.ts",
+    "heat": "tsx pipeline/heat.ts",
+    "heat:tiles": "tsx pipeline/heattiles.ts",
     "match": "tsx pipeline/match.ts",
     "writeback": "tsx pipeline/writeback.ts",
     "dev": "vite web",
@@ -20,10 +22,12 @@
   },
   "dependencies": {
     "flatbush": "^4.4.0",
-    "maplibre-gl": "^6.16.0"
+    "maplibre-gl": "^6.16.0",
+    "pngjs": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pngjs": "^6.0.5",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vite": "^8.3.5",

@@ -26,6 +26,8 @@
 //   l  length in metres                  d  first ridden date, absent when unridden
 //   r  first activity id, absent when unridden
 //   p  1 when the first ride counted the edge as new km (primary), else absent
+//   t  bike heat 0..100 from the Strava heatmap (lib/heat.ts), absent when 0
+//      or when cache/heat/raw has no tiles (pnpm heat)
 // The kommune is the file name; outside files are numbered like the ride boxes
 // in stats.json. Files stay under 25 MB, Cloudflare Pages' limit per file.
 // web/src/data.ts mirrors this mapping.
@@ -51,6 +53,7 @@ import {
 import { loadEnv, privacyZone } from "./lib/env";
 import { mb, parseArgs, writeJson } from "./lib/fs";
 import { parseGpxTrack } from "./lib/gpx";
+import { HeatSampler } from "./lib/heat";
 import { gpxPath, loadManifest, ridesWithGpx, type ManifestEntry } from "./lib/manifest";
 import { bboxQuery, overpass, waysOf } from "./lib/overpass";
 import { loadKommuneRoads, loadRideRoads, rideCachePath, type RideRoads } from "./lib/roadcache";
@@ -379,6 +382,8 @@ async function main(): Promise<void> {
     /** Where outside.json has edges: the ride boxes fetched outside the region. */
     outside: { boxes: rideRoads.map((r) => bboxArray(r.bbox)) },
     rides,
+    /** Strava heatmap behind the edges' `t`, null when there were no raw tiles. */
+    heat: null as null | { zoom: number; edges_with_heat: number },
   };
 
   // Edge files grouped by kommune, or by ride box for edges outside the region;
@@ -400,6 +405,8 @@ async function main(): Promise<void> {
   };
   const byFile = new Map<string, unknown[]>();
   let zonedEdges = 0;
+  const heat = HeatSampler.open();
+  let heated = 0;
   for (const e of edges) {
     if (e.coords.some(inZone)) {
       zonedEdges++;
@@ -409,6 +416,8 @@ async function main(): Promise<void> {
     const file = e.kommune === null ? outsideFile(e) : `${PATHS.kommunerOut}/${e.kommune}.json`;
     let list = byFile.get(file);
     if (!list) byFile.set(file, (list = []));
+    const t = heat?.edge(e.coords) || undefined;
+    if (t) heated++;
     list.push({
       type: "Feature",
       geometry: { type: "LineString", coordinates: e.coords.map(([lon, lat]) => [round5(lon), round5(lat)]) },
@@ -423,6 +432,7 @@ async function main(): Promise<void> {
         d: r?.first_date,
         r: r?.first_activity,
         p: counted.has(e.id) ? 1 : undefined,
+        t,
       },
     });
   }
@@ -430,6 +440,10 @@ async function main(): Promise<void> {
   for (const path of [PATHS.kommunerOut, PATHS.tracksOut, PATHS.outsideOut, "web/public/data/edges.json", "web/public/data/outside.json"]) {
     rmSync(path, { recursive: true, force: true });
   }
+  if (heat) {
+    stats.heat = { zoom: heat.zoom, edges_with_heat: heated };
+    console.log(`bike heat from z${heat.zoom} tiles on ${heated} of ${edges.length - zonedEdges} published edges`);
+  } else console.log("no heat tiles in cache/heat/raw (pnpm heat): edges carry no bike heat");
   let edgesBytes = 0;
   for (const [path, features] of byFile) edgesBytes += writeJson(path, { type: "FeatureCollection", features });
 

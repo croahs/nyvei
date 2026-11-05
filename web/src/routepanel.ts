@@ -46,6 +46,11 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   const gpx = $<HTMLButtonElement>("#route-gpx");
   const kmInput = $<HTMLInputElement>("#route-km");
   const roadsOnly = $<HTMLInputElement>("#route-roads");
+  const heatK = $<HTMLInputElement>("#route-heat");
+  const heatRow = $("#route-heat-row");
+  const heatVal = $("#route-heat-val");
+  const showHeatK = () => (heatVal.textContent = Number(heatK.value) ? `${Math.round(Number(heatK.value) * 100)} %` : "off");
+  showHeatK();
   const status = $("#route-status");
   const result = $("#route-result");
 
@@ -72,7 +77,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     if (!(target > 0)) return;
     sentAt = performance.now();
     status.textContent = "Generating…";
-    send({ type: "loop", id: ++requestId, start, km: target, variant, roadsOnly: roadsOnly.checked });
+    send({ type: "loop", id: ++requestId, start, km: target, variant, roadsOnly: roadsOnly.checked, heatK: Number(heatK.value) });
   };
 
   pick.addEventListener("click", () => {
@@ -89,6 +94,8 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   });
   kmInput.addEventListener("change", () => (variant = 0));
   roadsOnly.addEventListener("change", () => (variant = 0));
+  heatK.addEventListener("input", showHeatK);
+  heatK.addEventListener("change", () => (variant = 0));
   go.addEventListener("click", () => {
     variant = 0;
     generate();
@@ -106,6 +113,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     if (m.type === "progress") status.textContent = `Building route graph, ${m.done} of ${m.of} files…`;
     else if (m.type === "ready") {
       ready = true;
+      heatRow.hidden = !m.hasHeat;
       status.textContent = `Route graph ready: ${m.edges.toLocaleString("en")} edges in ${(m.ms / 1000).toFixed(1)} s`;
     } else if (m.type === "error") {
       if (m.id === undefined || m.id === requestId) status.textContent = m.message;
@@ -130,6 +138,9 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
       ["Unridden roads", `${km(l.unriddenCountableKm)} km, ${Math.round(l.share * 100)} % of the loop`],
       ["Unridden tracks and paths", `${km(l.unriddenBonusKm)} km`],
     ];
+    if (l.popularShare !== null && l.meanHeat !== null) {
+      rows.push(["Roads cyclists use", `${Math.round(l.popularShare * 100)} % of the loop, mean bike heat ${Math.round(l.meanHeat * 100)}`]);
+    }
     result.replaceChildren(
       ...rows.map(([k, v]) => {
         const div = document.createElement("div");

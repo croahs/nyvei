@@ -20,6 +20,16 @@
         <li><i class="thin" style="--c: #8b3fd9"></i>Ridden track or path</li>
         <li><i class="thin dash" style="--c: #9aa2ab"></i>Unridden track or path</li>
       </ul>
+      <details id="layers" open>
+        <summary>Map</summary>
+        <label class="field">Base map <select id="basemap"></select></label>
+        <div id="heat-overlays" hidden>
+          <label class="field">Strava heat <input id="heat-opacity" type="range" min="0" max="1" step="0.05" /></label>
+          <div id="heat-toggles" class="toggles"></div>
+        </div>
+        <label id="edge-heat-row" hidden title="Colour unridden roads and tracks by how much other cyclists ride them"><input id="edge-heat" type="checkbox" /> Colour unridden roads by bike heat</label>
+        <div id="edge-heat-legend" class="heat-legend" hidden><span class="muted">quiet</span><i class="heat-ramp"></i><span class="muted">busy</span></div>
+      </details>
       <section id="ride-info" hidden>
         <div class="ride-head"><strong id="ride-name"></strong><button id="ride-clear" type="button">Clear</button></div>
         <div id="ride-new"></div>
@@ -39,6 +49,7 @@
         <div class="route-row">
           <label>Distance <input id="route-km" type="number" min="5" max="300" step="5" value="40" /> km</label>
           <label title="Keep the loop off tracks, paths and other bonus ways"><input id="route-roads" type="checkbox" /> Roads only</label>
+          <label id="route-heat-row" hidden title="How strongly the loop prefers roads other cyclists ride (Strava heatmap)">Prefer bike heat <input id="route-heat" type="range" min="0" max="0.9" step="0.1" value="0.6" /> <span id="route-heat-val" class="muted"></span></label>
           <button id="route-go" type="button">Generate</button>
           <button id="route-next" type="button">Try another</button>
         </div>

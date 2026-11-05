@@ -42,6 +42,13 @@ button.active { background: #d0ebff; border-color: #1c7ed6; }
 #route-result { margin: 6px 0; font-variant-numeric: tabular-nums; }
 
 details { margin-top: 12px; }
+.field { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.field select, .field input[type="range"] { flex: 1; min-width: 0; font: inherit; }
+.toggles label { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.toggles i { display: inline-block; width: 22px; height: 6px; border-radius: 2px; background: var(--c); }
+.heat-legend { display: flex; align-items: center; gap: 6px; margin: 4px 0 0 22px; }
+.heat-ramp { display: inline-block; width: 120px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, #c3c8cf, #fcc2d7 11%, #f06595 33%, #c2255c 67%, #5c0f2e); }
+#route-heat { width: 90px; vertical-align: middle; }
 summary { font-weight: 600; cursor: pointer; padding: 4px 0; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 4px; }

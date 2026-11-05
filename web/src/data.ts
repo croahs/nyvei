@@ -4,7 +4,8 @@
 // short property names, mirrored from the comment at the top of match.ts:
 //   i id, a from node, b to node, c 1 countable / 0 bonus, h highway, n name,
 //   l length (m), d first ridden date, r first activity id, p 1 if counted as
-//   new km for that ride. n, d, r and p are absent when empty.
+//   new km for that ride, t bike heat 0..100 from the Strava heatmap. n, d, r, p
+//   and t are absent when empty.
 // MapLibre fetches and parses the edge files in its worker; only stats.json and
 // the selected ride's track are parsed here.
 
@@ -20,6 +21,7 @@ export const P = {
   firstDate: "d",
   firstActivity: "r",
   counted: "p",
+  heat: "t",
 } as const;
 
 /** [minLon, minLat, maxLon, maxLat] */
@@ -59,6 +61,29 @@ export interface Stats {
   kommuner: Record<string, KommuneStats>;
   outside: { boxes: BBox[] };
   rides: RideStats[];
+  /** Present when match had Strava heat tiles, so edges carry `t`. Older stats files lack it. */
+  heat?: { zoom: number; edges_with_heat: number } | null;
+}
+
+/** Overlay tiles from pnpm heat:tiles, served under heat/ (cache/heat/tiles/meta.json). */
+export interface HeatMeta {
+  bbox: BBox;
+  minzoom: number;
+  maxzoom: number;
+  layers: string[];
+  colors: Record<string, string>;
+}
+
+/** The heat overlay's meta.json, or null when the site has no heat tiles. */
+export async function loadHeatMeta(): Promise<HeatMeta | null> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}heat/meta.json`);
+    // Pages answers unknown paths with index.html, so check the type too.
+    if (!res.ok || !res.headers.get("content-type")?.includes("json")) return null;
+    return (await res.json()) as HeatMeta;
+  } catch {
+    return null;
+  }
 }
 
 /** One lazily loaded edge file and the boxes it has edges in. */

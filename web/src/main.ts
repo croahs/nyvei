@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "./style.css";
 import { edgeFiles, loadStats, loadTrack, P, type BBox, type EdgeFile, type RideStats, type Stats } from "./data";
+import { setupMapSection } from "./layers";
 import { setupRoute, type RoutePanel } from "./routepanel";
 
 // MapLibre looks for its worker next to its own module, which Vite's bundling moves.
@@ -21,12 +22,14 @@ interface Group {
   color: string;
   /** Desaturated color while a ride is selected, so its own roads stand out. */
   muted?: string;
+  /** Unridden groups take the bike heat ramp when "colour by bike heat" is on. */
+  heat?: boolean;
   width: number;
   dash?: number[];
 }
 const GROUPS: Group[] = [
-  { id: "bonus", filter: ["all", ["!", ridden], ["!", countable]], color: "#9aa2ab", width: 0.8, dash: [2, 2] },
-  { id: "road", filter: ["all", ["!", ridden], countable], color: "#6f7a87", width: 1.3 },
+  { id: "bonus", filter: ["all", ["!", ridden], ["!", countable]], color: "#9aa2ab", width: 0.8, dash: [2, 2], heat: true },
+  { id: "road", filter: ["all", ["!", ridden], countable], color: "#6f7a87", width: 1.3, heat: true },
   { id: "bonus-ridden", filter: ["all", ridden, ["!", countable]], color: "#8b3fd9", muted: "#c9bdd6", width: 1.4 },
   { id: "road-ridden", filter: ["all", ridden, countable], color: "#e8590c", muted: "#dcc3b5", width: 2.4 },
 ];
@@ -56,7 +59,18 @@ let selected: string | null = null;
 let route: RoutePanel | undefined;
 const started = performance.now();
 
-const groupColor = (g: Group) => (selected && g.muted) || g.color;
+let edgeHeat = false;
+/** Bike heat ramp (edge `t`, 0..100); mirrored by .heat-ramp in style.css. */
+const HEAT_RAMP: ExpressionSpecification = [
+  "interpolate", ["linear"], ["coalesce", ["get", P.heat], 0],
+  0, "#c3c8cf", 10, "#fcc2d7", 30, "#f06595", 60, "#c2255c", 90, "#5c0f2e",
+];
+const groupColor = (g: Group): string | ExpressionSpecification => (edgeHeat && g.heat ? HEAT_RAMP : (selected && g.muted) || g.color);
+
+function setEdgeHeat(on: boolean): void {
+  edgeHeat = on;
+  for (const k of loaded) for (const g of GROUPS) if (g.heat) map.setPaintProperty(`${g.id}-${k}`, "line-color", groupColor(g));
+}
 const interactive = () => [...loaded].flatMap((k) => [...GROUPS.map((g) => `${g.id}-${k}`), `${NEW_GROUP}-${k}`]);
 
 function setupLayers(): void {
@@ -184,6 +198,7 @@ function showEdge(e: maplibregl.MapMouseEvent): void {
     ["Length", `${p[P.length]} m`],
     ["First ridden", first ? `${first}${ride ? ` · ${ride.name}` : ""}` : "not yet"],
   ];
+  if (stats.heat) rows.push(["Bike heat", `${(p[P.heat] as number | undefined) ?? 0} / 100`]);
   const title = document.createElement("strong");
   title.textContent = (p[P.name] as string | undefined) ?? "Unnamed";
   div.append(title);
@@ -294,6 +309,7 @@ async function start(): Promise<void> {
   $("#generated").textContent = `Data from ${stats.generated.slice(0, 16).replace("T", " ")}`;
   await mapReady;
   setupLayers();
+  void setupMapSection(map, `anchor-${GROUPS[0]!.id}`, stats, setEdgeHeat);
   route = setupRoute(map, files);
   loadVisible();
   map.on("moveend", loadVisible);
