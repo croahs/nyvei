@@ -48,10 +48,11 @@ project is merged in here.
   `t` 0..100, which the route builder uses to keep loops on roads people
   ride, so a loop does not pick a road just because it is unridden. Tiles
   are fetched with the cookies of a logged-in strava.com session, for
-  personal use only. They are derived Strava data: the overlay tiles go
-  into a build only with `PUBLISH_HEAT=1`, which is for once the site is
-  behind Cloudflare Access, as gravelheater was. The per-edge `t` numbers
-  are published with the edge files. Heat covers gravelheater's "sandnes"
+  personal use only. They are derived Strava data, so the overlay tiles
+  go into a build only with `PUBLISH_HEAT=1` (environment or `.env`). The
+  owner publishes them on nyvei.pages.dev without Cloudflare Access: the
+  site is personal and of no interest to anyone else. The per-edge `t`
+  numbers are published with the edge files. Heat covers gravelheater's "sandnes"
   box (Egersund to Nord-Jæren and Suleskard); edges outside it have no
   heat and route as before.
 - **Published on Cloudflare Pages**, repo stays private. GitHub Pages
@@ -217,11 +218,9 @@ Each phase ends on a checkable criterion.
 - Data size: the edge files are about 120 MB in all and the first full
   view takes about 8 s. Vector tiles (PMTiles) would cut that on the
   published site.
-- Heat publishing: the overlay tiles stay out of the published build
-  until nyvei.pages.dev is behind Cloudflare Access, which also puts the
-  whole site behind a login. The Publish workflow has no heat tiles (4 GB,
-  cookies that last a day), so a CI run would publish edges without `t`;
-  heat runs stay on this machine for now.
+- Heat in CI: the Publish workflow has no heat tiles (4 GB, cookies that
+  last a day), so a CI run would publish edges without `t` and no
+  overlays; heat runs stay on this machine for now.
 - Heat calibration: whether `t` ≥ 25 is the right line for "roads
   cyclists use", and whether k = 0.6 is the right default, needs the real
   tiles on a screen.

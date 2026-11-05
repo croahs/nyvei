@@ -106,9 +106,8 @@ pnpm writeback
 ```
 
 Heat overlay tiles are derived Strava data and stay out of `pnpm build`
-unless `PUBLISH_HEAT=1` is set; set it only once the site is behind
-Cloudflare Access (Zero Trust → Access → Applications, as for
-gravelheater). Locally, `pnpm dev` always shows them.
+unless `PUBLISH_HEAT=1` is set in `.env` (or the environment). Locally,
+`pnpm dev` always shows them.
 
 `pnpm ship` runs match, build and pages in one go, and works in any shell
 (Windows PowerShell 5.1 has no `&&`). It stops at match when

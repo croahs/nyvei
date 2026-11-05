@@ -1,12 +1,14 @@
 // The heat overlay tiles live in cache/heat/tiles (pnpm heat:tiles), outside
 // web/public, because they are derived Strava data: dev serves them at /heat/,
-// and a build copies them only with PUBLISH_HEAT=1 (PLAN.md, heat). Without
-// them the site simply has no heat overlay.
+// and a build copies them only with PUBLISH_HEAT=1, from the environment or
+// .env (PLAN.md, heat). Without them the site simply has no heat overlay.
 
 import { cpSync, createReadStream, existsSync, statSync } from "node:fs";
 import { join, normalize, resolve, sep } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
+const ENV_FILE = resolve(import.meta.dirname, "../.env");
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 const HEAT_DIR = resolve(import.meta.dirname, "../cache/heat/tiles");
 const TYPES: Record<string, string> = { ".png": "image/png", ".json": "application/json" };
 
@@ -35,7 +37,7 @@ function heatTiles(): Plugin {
     closeBundle() {
       if (!existsSync(HEAT_DIR)) return;
       if (process.env.PUBLISH_HEAT !== "1") {
-        console.log("heat tiles left out of the build: set PUBLISH_HEAT=1 once the site is behind Cloudflare Access (PLAN.md, heat)");
+        console.log("heat tiles left out of the build: set PUBLISH_HEAT=1 in .env to publish them (PLAN.md, heat)");
         return;
       }
       cpSync(HEAT_DIR, join(outDir, "heat"), { recursive: true });

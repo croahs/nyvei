@@ -16,10 +16,9 @@ when a decision lands; never append a contradicting section.
 - Ridden-road data reveals where the owner lives. Nothing under
   `web/public/data/` is published anywhere without the privacy zone from
   PLAN.md phase 4.
-- Strava heat tiles are derived Strava data for personal use. They never
-  go into a published build without `PUBLISH_HEAT=1`, and that is only set
-  once the site is behind Cloudflare Access. Strava cookies live in `.env`
-  like the Intervals.icu key.
+- Strava heat tiles are derived Strava data for personal use. They go into
+  a build only with `PUBLISH_HEAT=1`, which the owner sets; never set it
+  on their behalf. Strava cookies live in `.env` like the Intervals.icu key.
 - Code, comments, commit messages and docs in English.
 
 ## Verifying
