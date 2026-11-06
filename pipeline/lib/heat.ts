@@ -1,4 +1,5 @@
-// Strava heatmap tiles: slippy-map math, raw tile decoding and per-edge heat.
+// Strava heatmap tiles: slippy-map math, raw tile decoding, gravelheater's
+// per-pixel scores and per-edge heat.
 // Ported from gravelheater (src/tiles.js, src/compute.js, src/graph.js).
 
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -49,14 +50,40 @@ export function zoomArg(argv: string[]): number {
   return z;
 }
 
+/** Gravel score of one pixel (layers 0..1): gravel − road, scaled down where road nearly matches it. */
+export function gravelScore(g: number, r: number): number {
+  return g >= HEAT.minSignal && g > r ? (g - r) * Math.min(1, g / (r + HEAT.epsilon)) : 0;
+}
+
+/** Off-road score of one pixel (layers 0..1): (gravel + mtb) − road, up to 2. */
+export function offroadScore(g: number, m: number, r: number): number {
+  return g + m >= HEAT.minSignal && g + m > r ? g + m - r : 0;
+}
+
+/** Heat of one edge, each 0..1. */
+export interface EdgeHeat {
+  /** Brightest of the three sport layers. */
+  any: number;
+  /** The Ride layer. */
+  road: number;
+  /** gravelScore. */
+  gravel: number;
+  /** offroadScore capped at 1. Unlike the overlay it also counts where gravel fires. */
+  offroad: number;
+}
+
+const LAYERS = ["gravel", "road", "mtb"] as const;
+type Tile = Record<(typeof LAYERS)[number], Uint8Array | null>;
+
 /**
- * Bike heat per edge: every sample reads the brightest pixel of any sport layer
- * within ± windowPx, and the edge's heat is the mean over its samples, 0..100.
- * Strava normalises each layer on its own, so the max of the three says how
- * much a road is ridden by its busiest group of cyclists.
+ * Heat per edge: every sample reads the brightest pixel of each sport layer
+ * within ± windowPx, the scores come from those three values, and each heat
+ * is the mean over the edge's samples. Strava normalises each layer on its
+ * own, so `any` (the max of the three) says how much a road is ridden by its
+ * busiest group of cyclists.
  */
 export class HeatSampler {
-  private cache = new Map<string, Uint8Array | null>();
+  private cache = new Map<string, Tile | null>();
   readonly zoom: number;
 
   private constructor(zoom: number) {
@@ -66,13 +93,13 @@ export class HeatSampler {
   /** A sampler over the raw tiles at the zoom that has some, or undefined when there are none. */
   static open(): HeatSampler | undefined {
     for (const z of [HEAT.zoom, 16, 14, 13, 12]) {
-      if (Object.keys(HEAT.sports).some((layer) => existsSync(`${HEAT_PATHS.raw}/${layer}/${z}`))) return new HeatSampler(z);
+      if (LAYERS.some((layer) => existsSync(`${HEAT_PATHS.raw}/${layer}/${z}`))) return new HeatSampler(z);
     }
     return undefined;
   }
 
-  /** Max of the sport layers for one tile, decoded on first use and kept in an LRU. */
-  private tile(tx: number, ty: number): Uint8Array | null {
+  /** The sport layers of one tile, decoded on first use and kept in an LRU. */
+  private tile(tx: number, ty: number): Tile | null {
     const key = `${tx}/${ty}`;
     const hit = this.cache.get(key);
     if (hit !== undefined) {
@@ -80,46 +107,70 @@ export class HeatSampler {
       this.cache.set(key, hit);
       return hit;
     }
-    let merged: Uint8Array | null = null;
-    for (const layer of Object.keys(HEAT.sports)) {
-      const t = readRaw(rawTilePath(layer, this.zoom, tx, ty));
-      if (!t) continue;
-      if (!merged) merged = t;
-      else for (let i = 0; i < t.length; i++) if (t[i]! > merged[i]!) merged[i] = t[i]!;
-    }
-    this.cache.set(key, merged);
+    const t = Object.fromEntries(LAYERS.map((l) => [l, readRaw(rawTilePath(l, this.zoom, tx, ty))])) as Tile;
+    const tile = LAYERS.some((l) => t[l]) ? t : null;
+    this.cache.set(key, tile);
     if (this.cache.size > HEAT.cacheTiles) this.cache.delete(this.cache.keys().next().value!);
-    return merged;
+    return tile;
   }
 
-  private pixel(px: number, py: number): number {
+  /** Brightest pixel of each layer (gravel, road, mtb) within the window around a point, 0..1. */
+  private at([lon, lat]: LonLat): [number, number, number] {
     const s = HEAT.size;
-    const t = this.tile(Math.floor(px / s), Math.floor(py / s));
-    return t ? t[(((py % s) + s) % s) * s + (((px % s) + s) % s)]! : 0;
-  }
-
-  /** Brightest pixel within the window around a point, 0..255. */
-  at([lon, lat]: LonLat): number {
-    const n = 2 ** this.zoom * HEAT.size;
+    const n = 2 ** this.zoom * s;
     const rad = (lat * Math.PI) / 180;
     const px = Math.floor(((lon + 180) / 360) * n);
     const py = Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
     const w = HEAT.windowPx;
-    let best = 0;
-    for (let y = py - w; y <= py + w; y++) for (let x = px - w; x <= px + w; x++) best = Math.max(best, this.pixel(x, y));
-    return best;
+    let g = 0;
+    let r = 0;
+    let m = 0;
+    for (let y = py - w; y <= py + w; y++) {
+      for (let x = px - w; x <= px + w; x++) {
+        const t = this.tile(Math.floor(x / s), Math.floor(y / s));
+        if (!t) continue;
+        const i = (((y % s) + s) % s) * s + (((x % s) + s) % s);
+        g = Math.max(g, t.gravel?.[i] ?? 0);
+        r = Math.max(r, t.road?.[i] ?? 0);
+        m = Math.max(m, t.mtb?.[i] ?? 0);
+      }
+    }
+    return [g / 255, r / 255, m / 255];
   }
 
-  /** Mean heat along a polyline, 0..100, leaving out the samples at its ends. */
-  edge(coords: LonLat[]): number {
+  /** Mean heat along a polyline, leaving out the samples at its ends. */
+  edge(coords: LonLat[]): EdgeHeat {
     const [lon0, lat0] = coords[0]!;
     const proj = new LocalProjection(lon0, lat0);
     const kx = 111320 * Math.cos((lat0 * Math.PI) / 180);
     let samples = samplePolyline(coords.map((p) => proj.project(p)), HEAT.sampleM);
     // The end samples sit in the junction, where the heat of the road joined bleeds in.
     if (samples.length > 2) samples = samples.slice(1, -1);
-    let sum = 0;
-    for (const [x, y] of samples) sum += this.at([lon0 + x / kx, lat0 + y / 111320]);
-    return Math.round((100 * sum) / (255 * samples.length));
+    const sum = { any: 0, road: 0, gravel: 0, offroad: 0 };
+    for (const [x, y] of samples) {
+      const [g, r, m] = this.at([lon0 + x / kx, lat0 + y / 111320]);
+      sum.any += Math.max(g, r, m);
+      sum.road += r;
+      sum.gravel += gravelScore(g, r);
+      sum.offroad += Math.min(1, offroadScore(g, m, r));
+    }
+    const n = samples.length;
+    return { any: sum.any / n, road: sum.road / n, gravel: sum.gravel / n, offroad: sum.offroad / n };
   }
+}
+
+export type HeatMode = Exclude<keyof EdgeHeat, "any">;
+
+/**
+ * Per mode, the 95th percentile of that heat over the edges that have any:
+ * the edge files divide by it, so the three heats share a scale. Gravel − road
+ * is a difference and mostly small, so unscaled a gravel preference barely
+ * moves a loop.
+ */
+export function heatScale(heats: (EdgeHeat | undefined)[]): Record<HeatMode, number> {
+  const p95 = (m: HeatMode) => {
+    const v = heats.flatMap((h) => (h && h[m] > 0 ? [h[m]] : [])).sort((a, b) => a - b);
+    return v.length ? v[Math.floor(0.95 * (v.length - 1))]! : 1;
+  };
+  return { road: p95("road"), gravel: p95("gravel"), offroad: p95("offroad") };
 }

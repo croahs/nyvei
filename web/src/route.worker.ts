@@ -4,9 +4,9 @@
 // the worker took 1.4 s, while parsing on the main thread and posting the
 // objects over took 4-5 s, 3 s of it structured cloning that blocks the page.
 
-import { GraphBuilder, makeLoop, type Graph, type Loop, type LonLat } from "./route";
+import { GraphBuilder, makeLoop, type Graph, type HeatMode, type Loop, type LonLat } from "./route";
 
-export type Request = { type: "load"; urls: string[] } | { type: "loop"; id: number; start: LonLat; km: number; variant: number; roadsOnly: boolean; heatK: number };
+export type Request = { type: "load"; urls: string[] } | { type: "loop"; id: number; start: LonLat; km: number; variant: number; roadsOnly: boolean; heatK: number; heatMode: HeatMode };
 
 export type Response =
   | { type: "progress"; done: number; of: number }
@@ -45,7 +45,7 @@ onmessage = async (e: MessageEvent<Request>) => {
     if (!graph) throw new Error("Graph not loaded.");
     const g = await graph;
     const t0 = performance.now();
-    const loop = makeLoop(g, m.start, m.km, m.variant, m.roadsOnly, m.heatK);
+    const loop = makeLoop(g, m.start, m.km, m.variant, m.roadsOnly, m.heatK, m.heatMode);
     post({ type: "loop", id: m.id, loop, ms: performance.now() - t0 });
   } catch (err) {
     post({ type: "error", id: m.id, message: err instanceof Error ? err.message : String(err) });

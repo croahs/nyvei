@@ -4,8 +4,9 @@
 // short property names, mirrored from the comment at the top of match.ts:
 //   i id, a from node, b to node, c 1 countable / 0 bonus, h highway, n name,
 //   l length (m), d first ridden date, r first activity id, p 1 if counted as
-//   new km for that ride, t bike heat 0..100 from the Strava heatmap. n, d, r, p
-//   and t are absent when empty.
+//   new km for that ride, t bike heat 0..100 from the Strava heatmap, tr road,
+//   tg gravel and to off-road heat 0..100. n, d, r, p and the heats are absent
+//   when empty.
 // MapLibre fetches and parses the edge files in its worker; only stats.json and
 // the selected ride's track are parsed here.
 
@@ -22,6 +23,9 @@ export const P = {
   firstActivity: "r",
   counted: "p",
   heat: "t",
+  roadHeat: "tr",
+  gravelHeat: "tg",
+  offroadHeat: "to",
 } as const;
 
 /** [minLon, minLat, maxLon, maxLat] */

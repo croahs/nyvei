@@ -4,7 +4,8 @@
 // undirected. Edge cost = length × 4 when ridden × 2 when bonus × (1 − k × heat)
 // (PLAN.md, route), so the cheapest path prefers unridden roads, uses a track only to
 // reach one, and with "prefer bike heat" k > 0 bends towards roads other cyclists ride
-// (heat 0..1 from the Strava heatmap, the edges' `t`). Roads only sets bonus edges to
+// (heat 0..1 from the Strava heatmap: the edges' `tr`, `tg` or `to` for the road, gravel
+// or off-road heat the loop prefers). Roads only sets bonus edges to
 // Infinity, so no path uses them. A loop goes out to the best unridden cluster in reach
 // and back with the outbound edges penalised again, so it closes without retracing.
 
@@ -33,6 +34,11 @@ export const MAX_HEAT_K = 0.9;
 /** Edge heat (0..1) from which the loop summary counts an edge as one cyclists use. */
 const POPULAR_HEAT = 0.25;
 
+/** Which heat the loop prefers: the Ride layer, gravel − road, or (gravel + mtb) − road. */
+export type HeatMode = "road" | "gravel" | "offroad";
+const HEAT_KEYS: Record<HeatMode, string> = { road: P.roadHeat, gravel: P.gravelHeat, offroad: P.offroadHeat };
+const HEAT_MODES = Object.keys(HEAT_KEYS) as HeatMode[];
+
 export interface Graph {
   nodes: number;
   edges: number;
@@ -45,11 +51,11 @@ export interface Graph {
   edgeB: Int32Array;
   edgeLen: Float64Array;
   edgeFlags: Uint8Array;
-  /** Bike heat 0..1 per edge, 0 where the edge files carry none. */
-  edgeHeat: Float32Array;
+  /** Heat 0..1 per edge for each mode, 0 where the edge files carry none. */
+  edgeHeat: Record<HeatMode, Float32Array>;
   /** True when any edge has heat, so "prefer bike heat" means something. */
   hasHeat: boolean;
-  /** Edge costs per (roads only, heat preference), built on first use. */
+  /** Edge costs per (roads only, heat mode, heat preference), built on first use. */
   costs: Map<string, Float64Array>;
   /** Geometry of edge e is coords[2 * coordStart[e] .. 2 * coordStart[e + 1]], from a to b. */
   coordStart: Int32Array;
@@ -77,7 +83,7 @@ export class GraphBuilder {
   private b: number[] = [];
   private len: number[] = [];
   private flags: number[] = [];
-  private heat: number[] = [];
+  private heat: Record<HeatMode, number[]> = { road: [], gravel: [], offroad: [] };
   private coordStart: number[] = [0];
   private coords: number[] = [];
 
@@ -103,7 +109,7 @@ export class GraphBuilder {
       this.b.push(this.node(to, cs[cs.length - 1]!));
       this.len.push(p[P.length] as number);
       this.flags.push((p[P.countable] === 1 ? COUNTABLE : 0) | (p[P.firstDate] ? RIDDEN : 0));
-      this.heat.push(((p[P.heat] as number | undefined) ?? 0) / 100);
+      for (const m of HEAT_MODES) this.heat[m].push(((p[HEAT_KEYS[m]] as number | undefined) ?? 0) / 100);
       for (const c of cs) this.coords.push(c[0]!, c[1]!);
       this.coordStart.push(this.coords.length / 2);
     }
@@ -116,7 +122,7 @@ export class GraphBuilder {
     const edgeB = Int32Array.from(this.b);
     const edgeLen = Float64Array.from(this.len);
     const edgeFlags = Uint8Array.from(this.flags);
-    const edgeHeat = Float32Array.from(this.heat);
+    const edgeHeat = Object.fromEntries(HEAT_MODES.map((m) => [m, Float32Array.from(this.heat[m])])) as Record<HeatMode, Float32Array>;
 
     const adjStart = new Int32Array(nodes + 1);
     for (let e = 0; e < edges; e++) {
@@ -172,7 +178,7 @@ export class GraphBuilder {
       edgeLen,
       edgeFlags,
       edgeHeat,
-      hasHeat: edgeHeat.some((h) => h > 0),
+      hasHeat: edgeHeat.road.some((h) => h > 0),
       costs: new Map(),
       coordStart: Int32Array.from(this.coordStart),
       coords: Float64Array.from(this.coords),
@@ -185,17 +191,18 @@ export class GraphBuilder {
 }
 
 /** Edge costs for a loop: see the header. `k` is the heat preference, 0 to MAX_HEAT_K. */
-function edgeCosts(g: Graph, roadsOnly: boolean, k: number): Float64Array {
-  const key = `${roadsOnly}|${k}`;
+function edgeCosts(g: Graph, roadsOnly: boolean, mode: HeatMode, k: number): Float64Array {
+  const key = `${roadsOnly}|${mode}|${k}`;
   let cost = g.costs.get(key);
   if (cost) return cost;
+  const heat = g.edgeHeat[mode];
   cost = new Float64Array(g.edges);
   for (let e = 0; e < g.edges; e++) {
     const f = g.edgeFlags[e]!;
     cost[e] =
       roadsOnly && !(f & COUNTABLE)
         ? Infinity
-        : g.edgeLen[e]! * (f & RIDDEN ? RIDDEN_FACTOR : 1) * (f & COUNTABLE ? 1 : BONUS_FACTOR) * (1 - k * g.edgeHeat[e]!);
+        : g.edgeLen[e]! * (f & RIDDEN ? RIDDEN_FACTOR : 1) * (f & COUNTABLE ? 1 : BONUS_FACTOR) * (1 - k * heat[e]!);
   }
   g.costs.set(key, cost);
   return cost;
@@ -349,9 +356,10 @@ export interface Loop {
   unriddenBonusKm: number;
   /** unriddenCountableKm / totalKm */
   share: number;
-  /** Share of the loop's length on edges with bike heat of at least POPULAR_HEAT, null without heat data. */
+  /** Share of the loop's length on edges with heat (of the chosen mode) of at least POPULAR_HEAT, null without heat data. */
   popularShare: number | null;
-  /** Length-weighted mean bike heat along the loop, 0..1, null without heat data. */
+  heatMode: HeatMode;
+  /** Length-weighted mean heat of the chosen mode along the loop, 0..1, null without heat data. */
   meanHeat: number | null;
   /** Position of the target cluster in the "try another" order (0 = most unridden countable km), and how many are in reach. */
   clusterRank: number;
@@ -364,13 +372,22 @@ export interface Loop {
  * picks the target cluster: 0 is the one with the most unridden countable km in
  * reach, each next one heads somewhere else, so "try another" walks the list.
  * `roadsOnly` keeps the loop off tracks, paths and other bonus edges; `heatK`
- * (0 to MAX_HEAT_K) is how strongly it prefers roads with bike heat.
+ * (0 to MAX_HEAT_K) is how strongly it prefers edges with `heatMode` heat.
  */
-export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: number, roadsOnly: boolean, heatK = 0): Loop {
+export function makeLoop(
+  g: Graph,
+  start: LonLat,
+  targetKm: number,
+  variant: number,
+  roadsOnly: boolean,
+  heatK = 0,
+  heatMode: HeatMode = "road",
+): Loop {
   const D = targetKm * 1000;
   const reach = D / 2;
   const k = g.hasHeat ? Math.min(MAX_HEAT_K, Math.max(0, heatK)) : 0;
-  const baseCost = edgeCosts(g, roadsOnly, k);
+  const heat = g.edgeHeat[heatMode];
+  const baseCost = edgeCosts(g, roadsOnly, heatMode, k);
   const s = snap(g, roadsOnly ? g.roads : g.all, start, D);
 
   // Out: cheapest paths from the start, cut at D/2.
@@ -393,7 +410,7 @@ export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: num
     if (c < 0 || la > reach || lb > reach) continue;
     const l = g.edgeLen[e]!;
     clusterLen[c]! += l;
-    clusterScore[c]! += l * (1 - k + k * g.edgeHeat[e]!);
+    clusterScore[c]! += l * (1 - k + k * heat[e]!);
     clusterFar[c] = Math.max(clusterFar[c]!, la, lb);
     clusterDx[c]! += (g.lon[a]! - g.lon[s]!) * kx * l;
     clusterDy[c]! += (g.lat[a]! - g.lat[s]!) * l;
@@ -491,8 +508,8 @@ export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: num
   let popularM = 0;
   let heatM = 0;
   for (const e of edges) {
-    if (g.edgeHeat[e]! >= POPULAR_HEAT) popularM += g.edgeLen[e]!;
-    heatM += g.edgeHeat[e]! * g.edgeLen[e]!;
+    if (heat[e]! >= POPULAR_HEAT) popularM += g.edgeLen[e]!;
+    heatM += heat[e]! * g.edgeLen[e]!;
     if (seen.has(e)) continue;
     seen.add(e);
     const f = g.edgeFlags[e]!;
@@ -509,6 +526,7 @@ export function makeLoop(g: Graph, start: LonLat, targetKm: number, variant: num
     unriddenBonusKm: bonusM / 1000,
     share: countableM / best.total,
     popularShare: g.hasHeat ? popularM / best.total : null,
+    heatMode,
     meanHeat: g.hasHeat ? heatM / best.total : null,
     clusterRank: rank,
     clustersInReach: ranked.length,

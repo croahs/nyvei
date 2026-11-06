@@ -44,14 +44,15 @@ project is merged in here.
 - **Strava heatmap, merged in from gravelheater.** The global heatmap
   (sport layers Ride, GravelRide, MountainBikeRide) does two jobs. As
   gravelheater's overlays, *gravel* (gravel − road) and *offroad* (mtb +
-  gravel − road), raster tiles on the map. And as *bike heat* per edge,
-  `t` 0..100, which the route builder uses to keep loops on roads people
-  ride, so a loop does not pick a road just because it is unridden. Tiles
+  gravel − road), raster tiles on the map. And as heat per edge, 0..100:
+  *bike heat* `t` for the map, and road, gravel and off-road heat (`tr`,
+  `tg`, `to`), one of which the route builder prefers so loops stay on
+  roads people ride, so a loop does not pick a road just because it is unridden. Tiles
   are fetched with the cookies of a logged-in strava.com session, for
   personal use only. They are derived Strava data, so the overlay tiles
   go into a build only with `PUBLISH_HEAT=1` (environment or `.env`). The
   owner publishes them on nyvei.pages.dev without Cloudflare Access: the
-  site is personal and of no interest to anyone else. The per-edge `t`
+  site is personal and of no interest to anyone else. The per-edge heat
   numbers are published with the edge files. Heat covers gravelheater's "sandnes"
   box (Egersund to Nord-Jæren and Suleskard); edges outside it have no
   heat and route as before.
@@ -136,18 +137,26 @@ gravelheater's compute step: per pixel, gravel = (g − r) × min(1, g /
 (r + 0.05)) where g ≥ 0.08 and g > r, else offroad = g + m − r where
 g + m ≥ 0.08 and > r; a pyramid of max-pooled parents down to zoom 9.
 Overlays draw gold (gravel) and cyan (offroad), off the colours nyvei
-already uses. `pnpm match` gives each edge its bike heat: every 10 m
-sample reads the brightest pixel of any layer within ±2 px, the end
-samples are dropped because the junction carries the joining road's heat,
-and `t` is the mean in percent. Strava normalises each layer on its own,
-so the max says how much the busiest group of cyclists uses the road. The
+already uses. `pnpm match` gives each edge its heat: every 10 m sample
+reads the brightest pixel of each layer within ±2 px, the end samples
+are dropped because the junction carries the joining road's heat, and
+each heat is a mean over the samples. `t` is the brightest of the three
+layers, in percent: Strava normalises each layer on its own, so the max
+says how much the busiest group of cyclists uses the road. `tr` is the
+Ride layer, `tg` the gravel score and `to` the off-road score (counted
+also where gravel fires, unlike the overlay, and capped at 1). Each of
+those three is scaled so its 95th percentile over heated edges is 100,
+because gravel − road is a difference and mostly small: unscaled, the
+median heated edge had gravel heat 6 and a gravel preference barely
+moved a loop. The
 site serves overlay tiles from `cache/heat/tiles` through a Vite plugin in
 dev; base maps (Positron, Kartverket topo and gråtone, OSM, OpenTopoMap)
 are a raster layer under everything, chosen in the panel.
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
 so loops prefer roads but may use a track to reach one, × (1 − k × heat)
-with heat = `t` / 100 and k the "prefer bike heat" slider (0 to 0.9,
+with heat = `tr`, `tg` or `to` / 100 as the panel's road, gravel or
+off-road choice says, and k the "prefer bike heat" slider (0 to 0.9,
 default 0.6), so with k = 0.6 the busiest road costs 0.4 of a dead one. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
 countable edges, because many bonus ways are hard going on a bike. The graph (nodes
@@ -165,7 +174,7 @@ metre; Dijkstra back with the outbound edges × 4 again, then r is
 rescaled until out + back is within 5 % of D (at most 8 tries). "Try
 another" walks the clusters in rank order, discounting any within 45° of
 an earlier one's bearing so the next loop heads somewhere else. The panel
-shows the share of the loop on edges with heat ≥ 25. Export
+shows the share of the loop on edges with the chosen heat ≥ 25. Export
 GPX 1.1. Own Dijkstra first; BRouter with nogo areas is the fallback if
 loops come out ugly.
 
@@ -207,7 +216,8 @@ Each phase ends on a checkable criterion.
   with fake tiles (a 20 km loop went from 19 % to 96 % on busy edges
   between k = 0 and 0.9). Met on the published site with real tiles:
   from central Sandnes at k = 0.6, a 39.7 km loop north to Stavanger
-  has 92 % on heat ≥ 25 and 85 % on unridden countable roads, and the
+  has 92 % on heat ≥ 25 (also 92 % on road heat after the road, gravel
+  and off-road split) and 85 % on unridden countable roads, and the
   edge heat colouring shows it on busy roads. Around Sandnes most roads
   carry heat anyway (k = 0 gives 78 %), so here the slider moves less
   than on the synthetic grid.
@@ -227,9 +237,12 @@ Each phase ends on a checkable criterion.
   about 330 MB; cookies last a day), yet it runs on every push to main
   and nightly. Each run replaces a local heat deploy with edges without
   `t` and no overlays.
-- Heat calibration: whether `t` ≥ 25 is the right line for "roads
-  cyclists use", and whether k = 0.6 is the right default, needs the real
-  tiles on a screen.
+- Heat calibration: whether heat ≥ 25 is the right line for "roads
+  cyclists use", whether k = 0.6 is the right default, and whether the
+  95th percentile is the right scale for gravel and off-road. From
+  Sandnes at k = 0.6, gravel took a 40 km loop from 8 % to 26 % on
+  gravel heat ≥ 25 and off-road from 33 % to 59 %, but there is little
+  gravel within reach there.
 - Left behind in gravelheater: point-to-point routing through clicked
   waypoints, surface share along a route, elevation profile, GPX import,
   saved routes, place search and the second area (Stellenbosch). Port

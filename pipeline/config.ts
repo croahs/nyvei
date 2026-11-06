@@ -149,8 +149,8 @@ export const HEAT = {
   /** Edge heat: a sample reads the brightest pixel within ± this many px (about ±5 m at zoom 15). */
   windowPx: 2,
   sampleM: 10,
-  /** Decoded raw tiles kept in memory while sampling edges. */
-  cacheTiles: 1500,
+  /** Tile positions kept decoded (all three layers, up to 0.8 MB each) while sampling edges. */
+  cacheTiles: 600,
 };
 
 export const HEAT_PATHS = {

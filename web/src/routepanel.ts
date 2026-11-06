@@ -2,11 +2,13 @@
 
 import * as maplibregl from "maplibre-gl";
 import type { EdgeFile } from "./data";
-import type { Loop, LonLat } from "./route";
+import type { HeatMode, Loop, LonLat } from "./route";
 import type { Request, Response } from "./route.worker";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const km = (n: number) => n.toFixed(1);
+/** Loop summary label for the share on edges with heat ≥ 25 of the chosen mode. */
+const HEAT_LABEL: Record<HeatMode, string> = { road: "Road heat ≥ 25", gravel: "Gravel heat ≥ 25", offroad: "Off-road heat ≥ 25" };
 
 export interface RoutePanel {
   /** True while the next map click sets the start, so main.ts skips its edge popup. */
@@ -47,6 +49,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   const kmInput = $<HTMLInputElement>("#route-km");
   const roadsOnly = $<HTMLInputElement>("#route-roads");
   const heatK = $<HTMLInputElement>("#route-heat");
+  const heatMode = $<HTMLSelectElement>("#route-heat-mode");
   const heatRow = $("#route-heat-row");
   const heatVal = $("#route-heat-val");
   const showHeatK = () => (heatVal.textContent = Number(heatK.value) ? `${Math.round(Number(heatK.value) * 100)} %` : "off");
@@ -77,7 +80,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     if (!(target > 0)) return;
     sentAt = performance.now();
     status.textContent = "Generating…";
-    send({ type: "loop", id: ++requestId, start, km: target, variant, roadsOnly: roadsOnly.checked, heatK: Number(heatK.value) });
+    send({ type: "loop", id: ++requestId, start, km: target, variant, roadsOnly: roadsOnly.checked, heatK: Number(heatK.value), heatMode: heatMode.value as HeatMode });
   };
 
   pick.addEventListener("click", () => {
@@ -96,6 +99,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   roadsOnly.addEventListener("change", () => (variant = 0));
   heatK.addEventListener("input", showHeatK);
   heatK.addEventListener("change", () => (variant = 0));
+  heatMode.addEventListener("change", () => (variant = 0));
   go.addEventListener("click", () => {
     variant = 0;
     generate();
@@ -139,7 +143,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
       ["Unridden tracks and paths", `${km(l.unriddenBonusKm)} km`],
     ];
     if (l.popularShare !== null && l.meanHeat !== null) {
-      rows.push(["Roads cyclists use", `${Math.round(l.popularShare * 100)} % of the loop, mean bike heat ${Math.round(l.meanHeat * 100)}`]);
+      rows.push([HEAT_LABEL[l.heatMode], `${Math.round(l.popularShare * 100)} % of the loop, mean heat ${Math.round(l.meanHeat * 100)}`]);
     }
     result.replaceChildren(
       ...rows.map(([k, v]) => {

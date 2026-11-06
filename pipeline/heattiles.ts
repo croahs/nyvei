@@ -4,8 +4,9 @@
 // road every group uses reads about equal in all of them and cancels:
 //   gravel:  gravel − road           = actual gravel
 //   offroad: (mtb + gravel) − road   = off-road of any kind, where gravel alone is too weak
-// Both are masked where the driving layer is below minSignal (one lone ride). A
-// pixel lands in gravel if that branch fires, else in offroad if that one does.
+// Both are masked where the driving layer is below minSignal (one lone ride);
+// the formulas are gravelScore and offroadScore in lib/heat.ts. A pixel lands
+// in gravel if that branch fires, else in offroad if that one does.
 // The tiles are derived Strava data: web/vite.config.ts only copies them into
 // a build with PUBLISH_HEAT=1 (see PLAN.md, heat).
 
@@ -13,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { dirname } from "node:path";
 import { PNG } from "pngjs";
 import { HEAT, HEAT_PATHS } from "./config";
-import { rawTilePath, readRaw, tilesInBbox, zoomArg } from "./lib/heat";
+import { gravelScore, offroadScore, rawTilePath, readRaw, tilesInBbox, zoomArg } from "./lib/heat";
 
 const LAYERS = ["gravel", "offroad"] as const;
 type Layer = (typeof LAYERS)[number];
@@ -96,11 +97,13 @@ function main(): void {
       const g = gravel ? gravel[i]! / 255 : 0;
       const r = road ? road[i]! / 255 : 0;
       const m = mtb ? mtb[i]! / 255 : 0;
-      if (g >= HEAT.minSignal && g > r) {
-        score.gravel[i] = (g - r) * Math.min(1, g / (r + HEAT.epsilon));
+      const gs = gravelScore(g, r);
+      const os = gs ? 0 : offroadScore(g, m, r);
+      if (gs) {
+        score.gravel[i] = gs;
         any.gravel = true;
-      } else if (g + m >= HEAT.minSignal && g + m > r) {
-        score.offroad[i] = g + m - r;
+      } else if (os) {
+        score.offroad[i] = os;
         any.offroad = true;
       }
     }
