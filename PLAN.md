@@ -159,7 +159,14 @@ with heat = `tr`, `tg` or `to` / 100 as the panel's road, gravel or
 off-road choice says, and k the "prefer bike heat" slider (0 to 0.9,
 default 0.6), so with k = 0.6 the busiest road costs 0.4 of a dead one. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
-countable edges, because many bonus ways are hard going on a bike. The graph (nodes
+countable edges, because many bonus ways are hard going on a bike.
+"Avoid hike-a-bike" does the same only for bonus edges with both ends in
+the heat bbox (`heat.bbox` in stats.json) and no `t`: a track or path no
+cyclist on Strava rides is the broadest sign of one you push the bike
+on. It is a blunt cut (5237 of 8862 bonus km in the box have no `t`, a
+new or quiet path that rides fine goes too); OSM's `sac_scale`,
+`mtb:scale` and `smoothness`, the Strava hike layer and gradient are
+sharper and not used yet. The graph (nodes
 are the `a`/`b` OSM node ids, edges undirected) is built in a Web Worker
 that fetches the edge files itself; that is faster than handing it
 MapLibre's parsed copy, because structured cloning 400k features blocks

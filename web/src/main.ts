@@ -310,7 +310,7 @@ async function start(): Promise<void> {
   await mapReady;
   setupLayers();
   void setupMapSection(map, `anchor-${GROUPS[0]!.id}`, stats, setEdgeHeat);
-  route = setupRoute(map, files);
+  route = setupRoute(map, files, stats.heat?.bbox);
   loadVisible();
   map.on("moveend", loadVisible);
   const wanted = new URLSearchParams(location.search).get("ride");

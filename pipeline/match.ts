@@ -36,7 +36,7 @@
 
 import { readFileSync, rmSync } from "node:fs";
 import Flatbush from "flatbush";
-import { KOMMUNER, MATCH, PATHS, type Tier } from "./config";
+import { HEAT, KOMMUNER, MATCH, PATHS, type Tier } from "./config";
 import { kmByTier, splitWays, type Edge, type SourcedWay } from "./lib/edges";
 import {
   bboxContains,
@@ -384,8 +384,8 @@ async function main(): Promise<void> {
     /** Where outside.json has edges: the ride boxes fetched outside the region. */
     outside: { boxes: rideRoads.map((r) => bboxArray(r.bbox)) },
     rides,
-    /** Strava heatmap behind the edges' `t`, null when there were no raw tiles. */
-    heat: null as null | { zoom: number; edges_with_heat: number },
+    /** Strava heatmap behind the edges' heat, null when there were no raw tiles. bbox is where edges were sampled. */
+    heat: null as null | { zoom: number; edges_with_heat: number; bbox: [number, number, number, number] },
   };
 
   // Edge files grouped by kommune, or by ride box for edges outside the region;
@@ -450,7 +450,7 @@ async function main(): Promise<void> {
     rmSync(path, { recursive: true, force: true });
   }
   if (heat) {
-    stats.heat = { zoom: heat.zoom, edges_with_heat: heated };
+    stats.heat = { zoom: heat.zoom, edges_with_heat: heated, bbox: HEAT.bbox };
     console.log(`bike heat from z${heat.zoom} tiles on ${heated} of ${edges.length - zonedEdges} published edges`);
     console.log(`  95th percentiles scaled to 100: road ${Math.round(100 * scale.road)}, gravel ${Math.round(100 * scale.gravel)}, off-road ${Math.round(100 * scale.offroad)}`);
   } else console.log("no heat tiles in cache/heat/raw (pnpm heat): edges carry no bike heat");

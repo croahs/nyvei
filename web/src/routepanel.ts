@@ -1,7 +1,7 @@
 // Route section of the panel: start point, target distance, loop on the map, GPX.
 
 import * as maplibregl from "maplibre-gl";
-import type { EdgeFile } from "./data";
+import type { BBox, EdgeFile } from "./data";
 import type { HeatMode, Loop, LonLat } from "./route";
 import type { Request, Response } from "./route.worker";
 
@@ -15,10 +15,11 @@ export interface RoutePanel {
   readonly picking: boolean;
 }
 
-export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
+/** `heatBBox` is where match sampled bike heat (stats.json), needed for "avoid hike-a-bike". */
+export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BBox): RoutePanel {
   const worker = new Worker(new URL("./route.worker.ts", import.meta.url), { type: "module" });
   const send = (r: Request) => worker.postMessage(r);
-  send({ type: "load", urls: files.map((f) => new URL(f.url, location.href).href) });
+  send({ type: "load", urls: files.map((f) => new URL(f.url, location.href).href), heatBBox });
 
   map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addLayer({
@@ -48,6 +49,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   const gpx = $<HTMLButtonElement>("#route-gpx");
   const kmInput = $<HTMLInputElement>("#route-km");
   const roadsOnly = $<HTMLInputElement>("#route-roads");
+  const avoidHike = $<HTMLInputElement>("#route-hike");
   const heatK = $<HTMLInputElement>("#route-heat");
   const heatMode = $<HTMLSelectElement>("#route-heat-mode");
   const heatRow = $("#route-heat-row");
@@ -80,7 +82,17 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     if (!(target > 0)) return;
     sentAt = performance.now();
     status.textContent = "Generating…";
-    send({ type: "loop", id: ++requestId, start, km: target, variant, roadsOnly: roadsOnly.checked, heatK: Number(heatK.value), heatMode: heatMode.value as HeatMode });
+    send({
+      type: "loop",
+      id: ++requestId,
+      start,
+      km: target,
+      variant,
+      roadsOnly: roadsOnly.checked,
+      avoidHike: avoidHike.checked,
+      heatK: Number(heatK.value),
+      heatMode: heatMode.value as HeatMode,
+    });
   };
 
   pick.addEventListener("click", () => {
@@ -97,6 +109,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
   });
   kmInput.addEventListener("change", () => (variant = 0));
   roadsOnly.addEventListener("change", () => (variant = 0));
+  avoidHike.addEventListener("change", () => (variant = 0));
   heatK.addEventListener("input", showHeatK);
   heatK.addEventListener("change", () => (variant = 0));
   heatMode.addEventListener("change", () => (variant = 0));
@@ -118,6 +131,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
     else if (m.type === "ready") {
       ready = true;
       heatRow.hidden = !m.hasHeat;
+      $("#route-hike-row").hidden = !m.hasHike;
       status.textContent = `Route graph ready: ${m.edges.toLocaleString("en")} edges in ${(m.ms / 1000).toFixed(1)} s`;
     } else if (m.type === "error") {
       if (m.id === undefined || m.id === requestId) status.textContent = m.message;
@@ -142,6 +156,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[]): RoutePanel {
       ["Unridden roads", `${km(l.unriddenCountableKm)} km, ${Math.round(l.share * 100)} % of the loop`],
       ["Unridden tracks and paths", `${km(l.unriddenBonusKm)} km`],
     ];
+    if (l.hikeKm !== null) rows.push(["Tracks and paths no cyclist rides", `${km(l.hikeKm)} km`]);
     if (l.popularShare !== null && l.meanHeat !== null) {
       rows.push([HEAT_LABEL[l.heatMode], `${Math.round(l.popularShare * 100)} % of the loop, mean heat ${Math.round(l.meanHeat * 100)}`]);
     }

@@ -65,8 +65,8 @@ export interface Stats {
   kommuner: Record<string, KommuneStats>;
   outside: { boxes: BBox[] };
   rides: RideStats[];
-  /** Present when match had Strava heat tiles, so edges carry `t`. Older stats files lack it. */
-  heat?: { zoom: number; edges_with_heat: number } | null;
+  /** Present when match had Strava heat tiles, so edges carry `t`. Older stats files lack it, or its bbox (where edges were sampled). */
+  heat?: { zoom: number; edges_with_heat: number; bbox?: BBox } | null;
 }
 
 /** Overlay tiles from pnpm heat:tiles, served under heat/ (cache/heat/tiles/meta.json). */

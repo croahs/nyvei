@@ -6,7 +6,8 @@
 // reach one, and with "prefer bike heat" k > 0 bends towards roads other cyclists ride
 // (heat 0..1 from the Strava heatmap: the edges' `tr`, `tg` or `to` for the road, gravel
 // or off-road heat the loop prefers). Roads only sets bonus edges to
-// Infinity, so no path uses them. A loop goes out to the best unridden cluster in reach
+// Infinity, so no path uses them; avoid hike-a-bike does that only for bonus edges
+// inside the heat bbox that have no bike heat at all (`t` absent). A loop goes out to the best unridden cluster in reach
 // and back with the outbound edges penalised again, so it closes without retracing.
 
 import { P } from "./data";
@@ -23,6 +24,8 @@ export interface EdgeCollection {
 
 const COUNTABLE = 1;
 const RIDDEN = 2;
+/** Bonus edge inside the heat bbox with no bike heat: nobody rides it, so likely hike-a-bike. */
+const HIKE = 4;
 const RIDDEN_FACTOR = 4;
 const BONUS_FACTOR = 2;
 /** Smallest outbound length, as a share of the target, a turnaround cluster must reach. */
@@ -55,7 +58,9 @@ export interface Graph {
   edgeHeat: Record<HeatMode, Float32Array>;
   /** True when any edge has heat, so "prefer bike heat" means something. */
   hasHeat: boolean;
-  /** Edge costs per (roads only, heat mode, heat preference), built on first use. */
+  /** True when any edge is flagged HIKE, so "avoid hike-a-bike" means something. */
+  hasHike: boolean;
+  /** Edge costs per (roads only, avoid hike-a-bike, heat mode, heat preference), built on first use. */
   costs: Map<string, Float64Array>;
   /** Geometry of edge e is coords[2 * coordStart[e] .. 2 * coordStart[e + 1]], from a to b. */
   coordStart: Int32Array;
@@ -63,8 +68,9 @@ export interface Graph {
   /** Connected component of unridden countable edges, -1 for every other edge. */
   edgeCluster: Int32Array;
   clusters: number;
-  /** Connected components of the whole graph, and of countable edges only for roads-only loops. */
+  /** Connected components of the whole graph, without HIKE edges, and of countable edges only for roads-only loops. */
   all: Components;
+  rideable: Components;
   roads: Components;
 }
 
@@ -74,8 +80,13 @@ interface Components {
   len: Float64Array;
 }
 
-/** Collects edge files one at a time so each parsed file can be dropped after `add`. */
+/**
+ * Collects edge files one at a time so each parsed file can be dropped after `add`.
+ * `heatBBox` is where match sampled heat; without it no edge is flagged HIKE.
+ */
 export class GraphBuilder {
+  constructor(private heatBBox?: [number, number, number, number]) {}
+
   private nodeIndex = new Map<number, number>();
   private lon: number[] = [];
   private lat: number[] = [];
@@ -108,7 +119,11 @@ export class GraphBuilder {
       this.a.push(this.node(from, cs[0]!));
       this.b.push(this.node(to, cs[cs.length - 1]!));
       this.len.push(p[P.length] as number);
-      this.flags.push((p[P.countable] === 1 ? COUNTABLE : 0) | (p[P.firstDate] ? RIDDEN : 0));
+      const countable = p[P.countable] === 1;
+      const bb = this.heatBBox;
+      const inHeat = (c: number[]) => !!bb && c[0]! >= bb[0] && c[1]! >= bb[1] && c[0]! <= bb[2] && c[1]! <= bb[3];
+      const hike = !countable && !p[P.heat] && inHeat(cs[0]!) && inHeat(cs[cs.length - 1]!);
+      this.flags.push((countable ? COUNTABLE : 0) | (p[P.firstDate] ? RIDDEN : 0) | (hike ? HIKE : 0));
       for (const m of HEAT_MODES) this.heat[m].push(((p[HEAT_KEYS[m]] as number | undefined) ?? 0) / 100);
       for (const c of cs) this.coords.push(c[0]!, c[1]!);
       this.coordStart.push(this.coords.length / 2);
@@ -179,20 +194,22 @@ export class GraphBuilder {
       edgeFlags,
       edgeHeat,
       hasHeat: edgeHeat.road.some((h) => h > 0),
+      hasHike: edgeFlags.some((f) => (f & HIKE) !== 0),
       costs: new Map(),
       coordStart: Int32Array.from(this.coordStart),
       coords: Float64Array.from(this.coords),
       edgeCluster,
       clusters: clusterId.size,
       all: components(() => true),
+      rideable: components((e) => (edgeFlags[e]! & HIKE) === 0),
       roads: components((e) => (edgeFlags[e]! & COUNTABLE) !== 0),
     };
   }
 }
 
 /** Edge costs for a loop: see the header. `k` is the heat preference, 0 to MAX_HEAT_K. */
-function edgeCosts(g: Graph, roadsOnly: boolean, mode: HeatMode, k: number): Float64Array {
-  const key = `${roadsOnly}|${mode}|${k}`;
+function edgeCosts(g: Graph, roadsOnly: boolean, avoidHike: boolean, mode: HeatMode, k: number): Float64Array {
+  const key = `${roadsOnly}|${avoidHike}|${mode}|${k}`;
   let cost = g.costs.get(key);
   if (cost) return cost;
   const heat = g.edgeHeat[mode];
@@ -200,7 +217,7 @@ function edgeCosts(g: Graph, roadsOnly: boolean, mode: HeatMode, k: number): Flo
   for (let e = 0; e < g.edges; e++) {
     const f = g.edgeFlags[e]!;
     cost[e] =
-      roadsOnly && !(f & COUNTABLE)
+      (roadsOnly && !(f & COUNTABLE)) || (avoidHike && f & HIKE)
         ? Infinity
         : g.edgeLen[e]! * (f & RIDDEN ? RIDDEN_FACTOR : 1) * (f & COUNTABLE ? 1 : BONUS_FACTOR) * (1 - k * heat[e]!);
   }
@@ -354,6 +371,8 @@ export interface Loop {
   /** Unridden km on the loop, each edge counted once however often the loop uses it. */
   unriddenCountableKm: number;
   unriddenBonusKm: number;
+  /** Km of the loop on HIKE edges (tracks and paths nobody rides), null when no edge is flagged. */
+  hikeKm: number | null;
   /** unriddenCountableKm / totalKm */
   share: number;
   /** Share of the loop's length on edges with heat (of the chosen mode) of at least POPULAR_HEAT, null without heat data. */
@@ -367,28 +386,32 @@ export interface Loop {
   clusterKm: number;
 }
 
+export interface LoopOptions {
+  km: number;
+  variant: number;
+  roadsOnly: boolean;
+  avoidHike: boolean;
+  heatK: number;
+  heatMode: HeatMode;
+}
+
 /**
- * A loop of about `targetKm` from `start` through unridden roads. `variant`
+ * A loop of about `km` from `start` through unridden roads. `variant`
  * picks the target cluster: 0 is the one with the most unridden countable km in
  * reach, each next one heads somewhere else, so "try another" walks the list.
- * `roadsOnly` keeps the loop off tracks, paths and other bonus edges; `heatK`
- * (0 to MAX_HEAT_K) is how strongly it prefers edges with `heatMode` heat.
+ * `roadsOnly` keeps the loop off tracks, paths and other bonus edges, `avoidHike`
+ * off those of them nobody rides; `heatK` (0 to MAX_HEAT_K) is how strongly it
+ * prefers edges with `heatMode` heat.
  */
-export function makeLoop(
-  g: Graph,
-  start: LonLat,
-  targetKm: number,
-  variant: number,
-  roadsOnly: boolean,
-  heatK = 0,
-  heatMode: HeatMode = "road",
-): Loop {
-  const D = targetKm * 1000;
+export function makeLoop(g: Graph, start: LonLat, o: LoopOptions): Loop {
+  const { variant, roadsOnly, heatMode } = o;
+  const D = o.km * 1000;
   const reach = D / 2;
-  const k = g.hasHeat ? Math.min(MAX_HEAT_K, Math.max(0, heatK)) : 0;
+  const k = g.hasHeat ? Math.min(MAX_HEAT_K, Math.max(0, o.heatK)) : 0;
+  const avoidHike = o.avoidHike && g.hasHike;
   const heat = g.edgeHeat[heatMode];
-  const baseCost = edgeCosts(g, roadsOnly, heatMode, k);
-  const s = snap(g, roadsOnly ? g.roads : g.all, start, D);
+  const baseCost = edgeCosts(g, roadsOnly, avoidHike, heatMode, k);
+  const s = snap(g, roadsOnly ? g.roads : avoidHike ? g.rideable : g.all, start, D);
 
   // Out: cheapest paths from the start, cut at D/2.
   const out = dijkstra(g, s, baseCost, reach);
@@ -507,9 +530,11 @@ export function makeLoop(
   let bonusM = 0;
   let popularM = 0;
   let heatM = 0;
+  let hikeM = 0;
   for (const e of edges) {
     if (heat[e]! >= POPULAR_HEAT) popularM += g.edgeLen[e]!;
     heatM += heat[e]! * g.edgeLen[e]!;
+    if (g.edgeFlags[e]! & HIKE) hikeM += g.edgeLen[e]!;
     if (seen.has(e)) continue;
     seen.add(e);
     const f = g.edgeFlags[e]!;
@@ -524,6 +549,7 @@ export function makeLoop(
     totalKm: best.total / 1000,
     unriddenCountableKm: countableM / 1000,
     unriddenBonusKm: bonusM / 1000,
+    hikeKm: g.hasHike ? hikeM / 1000 : null,
     share: countableM / best.total,
     popularShare: g.hasHeat ? popularM / best.total : null,
     heatMode,
