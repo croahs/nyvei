@@ -8,7 +8,11 @@ import type { Request, Response } from "./route.worker";
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const km = (n: number) => n.toFixed(1);
 /** Loop summary label for the share on edges with heat ≥ 25 of the chosen mode. */
-const HEAT_LABEL: Record<HeatMode, string> = { road: "Road heat ≥ 25", gravel: "Gravel heat ≥ 25", offroad: "Off-road heat ≥ 25" };
+const HEAT_LABEL: Record<HeatMode, string> = {
+  road: "Road heat ≥ 25",
+  gravel: "Gravel or ½ road heat ≥ 25",
+  offroad: "Off-road or ½ road heat ≥ 25",
+};
 
 export interface RoutePanel {
   /** True while the next map click sets the start, so main.ts skips its edge popup. */

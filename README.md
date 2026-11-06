@@ -78,9 +78,9 @@ within half the distance and comes back another way, preferring
 unridden roads and using tracks only to reach them. The panel shows the
 loop's length, its unridden road and track km, and the share of the loop
 on unridden roads. **Prefer bike heat** (shown once edges have heat) pulls the loop
-onto roads other cyclists ride, by *road* heat (the Ride layer), *gravel*
-(gravel − road, the gold overlay) or *off-road* (gravel + mtb − road, the
-cyan overlay); the panel shows how much of the loop is on them. **Avoid
+onto roads other cyclists ride, by *road* heat (the Ride layer), or by
+*gravel* (gravel − road, the gold overlay) or *off-road* (gravel + mtb −
+road, the cyan overlay) with road heat at half weight; the panel shows how much of the loop is on them. **Avoid
 hike-a-bike** keeps it off tracks and paths in the heat area that no
 cyclist rides. **Try another** picks a different patch, in another
 direction where there is one; **Download GPX** saves the loop as a GPX

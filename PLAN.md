@@ -160,12 +160,17 @@ are a raster layer under everything, chosen in the panel.
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
 so loops prefer roads but may use a track to reach one, × (1 − k × heat)
-with heat = `tr`, `tg` or `to` / 100 as the panel's road, gravel or
-off-road choice says, and k the "prefer bike heat" slider (0 to 0.9,
-default 0.8), so with k = 0.8 the busiest road costs 0.2 of a dead one.
-From k = 0.75 the busiest ridden road (4 × (1 − k)) costs no more than a
-dead unridden one, so the default leans towards riding busy roads again
-over unridden roads nobody rides; the owner chose that. "Roads only"
+with heat / 100 = `tr` for the panel's road choice, max(½ `tr`, `tg`)
+for gravel and max(½ `tr`, `to`) for off-road, and k the "prefer bike
+heat" slider (0 to 0.9, default 0.7), so with k = 0.7 the busiest road
+costs 0.3 of a dead one. Popular roads count in every mode, so the
+busier ones get ticked off first; at half weight a busy gravel track
+still beats a busy asphalt road. With full road heat the three modes gave
+the same loops from Sandnes and Ålgård, because road heat is the larger
+on nearly every road. The default stays below k = 0.75, where the
+busiest ridden road (4 × (1 − k)) would cost no more than a dead
+unridden one: at 0.8, 40 km loops from Ålgård were only 25 to 41 %
+unridden. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
 countable edges, because many bonus ways are hard going on a bike.
 "Avoid hike-a-bike" (on by default) does the same only for bonus edges with both ends in
@@ -253,7 +258,7 @@ Each phase ends on a checkable criterion.
   and nightly. Each run replaces a local heat deploy with edges without
   `t` and no overlays.
 - Heat calibration: whether heat ≥ 25 is the right line for "roads
-  cyclists use", whether k = 0.8 is the right default, and whether the
+  cyclists use", whether k = 0.7 is the right default, and whether the
   95th percentile is the right scale for gravel and off-road. From
   Sandnes at k = 0.6, gravel took a 40 km loop from 8 % to 26 % on
   gravel heat ≥ 25 and off-road from 33 % to 59 %, but there is little
