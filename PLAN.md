@@ -205,7 +205,12 @@ Each phase ends on a checkable criterion.
   with heat ≥ 25 and still half on unridden countable roads, checked
   against the overlay on the map. Built and checked on a synthetic grid
   with fake tiles (a 20 km loop went from 19 % to 96 % on busy edges
-  between k = 0 and 0.9); the real-data check is open.
+  between k = 0 and 0.9). Met on the published site with real tiles:
+  from central Sandnes at k = 0.6, a 39.7 km loop north to Stavanger
+  has 92 % on heat ≥ 25 and 85 % on unridden countable roads, and the
+  edge heat colouring shows it on busy roads. Around Sandnes most roads
+  carry heat anyway (k = 0 gives 78 %), so here the slider moves less
+  than on the synthetic grid.
 
 ## Open questions
 
@@ -218,9 +223,10 @@ Each phase ends on a checkable criterion.
 - Data size: the edge files are about 120 MB in all and the first full
   view takes about 8 s. Vector tiles (PMTiles) would cut that on the
   published site.
-- Heat in CI: the Publish workflow has no heat tiles (4 GB, cookies that
-  last a day), so a CI run would publish edges without `t` and no
-  overlays; heat runs stay on this machine for now.
+- Heat in CI: the Publish workflow has no heat tiles (the raw layers are
+  about 330 MB; cookies last a day), yet it runs on every push to main
+  and nightly. Each run replaces a local heat deploy with edges without
+  `t` and no overlays.
 - Heat calibration: whether `t` ≥ 25 is the right line for "roads
   cyclists use", and whether k = 0.6 is the right default, needs the real
   tiles on a screen.
