@@ -176,9 +176,12 @@ countable edges, because many bonus ways are hard going on a bike.
 "Skip where no one rides" (on by default) does the same for every edge,
 roads included, with both ends in the heat bbox (`heat.bbox` in
 stats.json) and heat 0 in the chosen mode: the owner treats the road
-heatmap as the judge of what is worth riding. It leaves out 631 of 3297
-unridden countable km in the box (222 of 1382 km residential), which
-then never get ridden by a route though they still count in the stats.
+heatmap as the judge of what is worth riding. Residential and living
+streets are exempt, because the owner means to ride every street: of
+the 631 unridden countable km in the box with no road heat, the 222 km
+of residential stay in reach and the other 409 km (346 km unclassified,
+47 km trunk and secondary) are never ridden by a route, though they
+still count in the stats.
 In gravel and off-road mode a bonus edge whose own heat (`tg` or `to`)
 is at least 25 counts as a road: no bonus factor, and it joins the
 destination clusters, because a track good enough for that much gravel

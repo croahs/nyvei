@@ -83,7 +83,9 @@ onto roads other cyclists ride, by *road* heat (the Ride layer), or by
 road, the cyan overlay) with road heat at half weight, and in those two
 modes busy gravel or off-road tracks count as roads to head for; the
 panel shows how much of the loop is on them. **Skip where no one rides**
-keeps it off every road, track and path in the heat area with no heat.
+keeps it off every road, track and path in the heat area with no heat,
+except residential streets, which stay in so every street gets ridden
+in the end.
 **Try another** picks a different patch, in another direction where
 there is one. **Sweep** instead rides every unridden road it can reach
 from the start, nearest first and dead ends included, and comes home

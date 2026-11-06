@@ -9,7 +9,7 @@
 // track or path whose own heat is at least POPULAR_HEAT counts as a road: no bonus
 // factor, and a destination like an unridden road. Roads only sets bonus edges to
 // Infinity; "skip where no one rides" does that for every edge inside the heat bbox
-// whose heat in the chosen mode is 0. A loop goes out to the best unridden cluster in
+// whose heat in the chosen mode is 0, except residential streets. A loop goes out to the best unridden cluster in
 // reach and back with the outbound edges penalised again, so it closes without
 // retracing. A sweep instead rides every unridden edge it can reach, nearest first,
 // and heads home when the distance is used up.
@@ -32,6 +32,9 @@ const RIDDEN = 2;
 const IN_HEAT = 4;
 /** Bonus edge with gravel (8) or off-road (16) heat of at least POPULAR_HEAT: a road in that mode. */
 const TRACK: Record<HeatMode, number> = { road: 0, gravel: 8, offroad: 16 };
+/** A residential street: never skipped for having no heat, because the owner rides every street. */
+const STREET = 32;
+const STREETS = new Set(["residential", "living_street"]);
 const RIDDEN_FACTOR = 4;
 const BONUS_FACTOR = 2;
 /** Smallest outbound length, as a share of the target, a turnaround cluster must reach. */
@@ -146,7 +149,7 @@ export class GraphBuilder {
       this.b.push(this.node(to, cs[cs.length - 1]!));
       this.len.push(p[P.length] as number);
       const countable = p[P.countable] === 1;
-      let flags = (countable ? COUNTABLE : 0) | (p[P.firstDate] ? RIDDEN : 0);
+      let flags = (countable ? COUNTABLE : 0) | (p[P.firstDate] ? RIDDEN : 0) | (STREETS.has(p[P.highway] as string) ? STREET : 0);
       if (this.inHeat(cs[0]!) && this.inHeat(cs[cs.length - 1]!)) flags |= IN_HEAT;
       const road = ((p[HEAT_KEYS.road] as number | undefined) ?? 0) / 100;
       for (const m of HEAT_MODES) {
@@ -220,7 +223,8 @@ export interface LoopOptions {
 const isTarget = (f: number, mode: HeatMode) => !(f & RIDDEN) && ((f & COUNTABLE) !== 0 || (f & TRACK[mode]) !== 0);
 
 /** No cyclist rides it in this mode, as far as the heatmap can tell. */
-const isDead = (g: Graph, mode: HeatMode, e: number) => (g.edgeFlags[e]! & IN_HEAT) !== 0 && g.edgeHeat[mode][e] === 0;
+const isDead = (g: Graph, mode: HeatMode, e: number) =>
+  (g.edgeFlags[e]! & (IN_HEAT | STREET)) === IN_HEAT && g.edgeHeat[mode][e] === 0;
 
 function view(g: Graph, o: LoopOptions): View {
   const skipDead = o.skipDead && g.hasDead;
