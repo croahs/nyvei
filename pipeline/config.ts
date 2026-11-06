@@ -162,6 +162,6 @@ export const HEAT = {
 export const HEAT_PATHS = {
   /** Raw Strava tiles, <layer>/<z>/<x>/<y>.png, same layout as gravelheater's tiles/. */
   raw: "cache/heat/raw",
-  /** Overlay tiles and meta.json; served at /heat/ by web/vite.config.ts. */
+  /** The heat project: overlay tiles, meta.json, edges.json (pnpm match). Served at /heat/ in dev by web/vite.config.ts, deployed with pnpm heat:pages. */
   tiles: "cache/heat/tiles",
 };

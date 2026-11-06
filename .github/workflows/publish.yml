@@ -1,5 +1,7 @@
 # Rebuilds the site data from Intervals.icu and OpenStreetMap and publishes it
-# to Cloudflare Pages: nightly, on every push to main, and on demand.
+# to Cloudflare Pages: nightly, on every push to main, and on demand. The heat
+# is its own Pages project (nyvei-heat), which the site fetches at runtime;
+# this workflow never builds or needs it.
 #
 # Secrets: INTERVALS_API_KEY, INTERVALS_ATHLETE_ID, PRIVACY_ZONE (lat,lon,radius_m),
 # CLOUDFLARE_API_TOKEN (Pages edit), CLOUDFLARE_ACCOUNT_ID.

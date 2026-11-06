@@ -39,19 +39,24 @@ leave the loaded kommuner, for runs with a partial kommune list.
 
 ## Strava heat (from gravelheater)
 
-The map can show gravelheater's heat overlays (gravel and off-road from the
-Strava global heatmap), and the route builder can prefer roads other
-cyclists ride. Both need the raw heatmap tiles in `cache/heat/raw/`:
+The map can show heat overlays from the Strava global heatmap (road, and
+gravelheater's gravel and off-road), and the route builder can prefer
+roads other cyclists ride. Both need the raw heatmap tiles in `cache/heat/raw/`:
 
 1. Copy the four Strava cookies into `.env` (see `.env.example`; same names
    as in gravelheater). They expire after about a day.
-2. `pnpm heat` downloads the three sport layers at zoom 15, about an hour
-   and 4 GB, resumable. Already have gravelheater's `tiles/`? Copy its
+2. `pnpm heat` downloads the three sport layers at zoom 15, about 300 MB
+   for the heat area, resumable. Already have gravelheater's `tiles/`? Copy its
    `gravel/`, `road/` and `mtb/` folders into `cache/heat/raw/` instead.
 3. `pnpm heat:tiles` builds the overlay tiles.
-4. `pnpm match` gives every edge its bike heat.
+4. `pnpm match` gives every edge its bike heat, in `cache/heat/tiles/edges.json`.
+5. `pnpm heat:pages` deploys `cache/heat/tiles` as its own Cloudflare Pages
+   project, `nyvei-heat`, where the published site fetches it. Only needed
+   when the heat changes. First time: `pnpm exec wrangler pages project
+   create nyvei-heat --production-branch main`.
 
-The heat area is `HEAT.bbox` in `pipeline/config.ts`. Without heat tiles the
+The heat area is `HEAT.bbox` in `pipeline/config.ts`. `pnpm dev` serves the
+local heat folder, so heat works there without a deploy. Without heat the
 site works as before, with no heat controls.
 
 ## Running the site
@@ -65,8 +70,7 @@ pnpm dev     # map at http://localhost:5173
 The map loads each kommune's roads as it comes into view. Hover a road
 for its name, type and first-ridden date; click a ride in the list to see
 its track and the roads it rode first. `pnpm build` writes a static build
-to `web/dist/`, data included, so it is for local use until phase 4 adds
-the privacy zone.
+to `web/dist/`, data included; see Publishing for putting it online.
 
 ## Building a route
 
@@ -114,9 +118,8 @@ pnpm ship
 pnpm writeback
 ```
 
-Heat overlay tiles are derived Strava data and stay out of `pnpm build`
-unless `PUBLISH_HEAT=1` is set in `.env` (or the environment). Locally,
-`pnpm dev` always shows them.
+The site build has no heat in it; the heat is its own project (see Strava
+heat above), so a site deploy never touches it.
 
 `pnpm ship` runs match, build and pages in one go, and works in any shell
 (Windows PowerShell 5.1 has no `&&`). It stops at match when
@@ -135,12 +138,10 @@ needs five repository secrets: `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`,
 `PRIVACY_ZONE`, `CLOUDFLARE_API_TOKEN` (a token with Cloudflare Pages
 edit) and `CLOUDFLARE_ACCOUNT_ID`. Ride GPX files and road data are kept
 in the Actions cache between runs; roads are refreshed from Overpass on
-the first of the month. Actions on a private repo use paid minutes, so
-the workflow runs only once billing on the GitHub account is in order.
+the first of the month.
 
 ## Status
 
-Phases 1 (pipeline), 2 (map) and 3 (route builder) done; phase 5 (heat
-from gravelheater) built, waiting for a check on real tiles; phase 4
-(publishing) is set up. Loading a GPX on the Garmin is still to be
-checked.
+Phases 1 (pipeline), 2 (map), 4 (publishing) and 5 (heat from
+gravelheater) done; phase 3 (route builder) done except loading a GPX on
+the Garmin, which is still to be checked.

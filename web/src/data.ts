@@ -4,11 +4,10 @@
 // short property names, mirrored from the comment at the top of match.ts:
 //   i id, a from node, b to node, c 1 countable / 0 bonus, h highway, n name,
 //   l length (m), d first ridden date, r first activity id, p 1 if counted as
-//   new km for that ride, t bike heat 0..100 from the Strava heatmap, tr road,
-//   tg gravel and to off-road heat 0..100. n, d, r, p and the heats are absent
-//   when empty.
+//   new km for that ride. n, d, r and p are absent when empty.
 // MapLibre fetches and parses the edge files in its worker; only stats.json and
-// the selected ride's track are parsed here.
+// the selected ride's track are parsed here. Heat comes from the heat project
+// (HEAT_BASE): overlay tiles, meta.json and edges.json, joined onto edges by id.
 
 /** Property names in the edge files. */
 export const P = {
@@ -22,10 +21,6 @@ export const P = {
   firstDate: "d",
   firstActivity: "r",
   counted: "p",
-  heat: "t",
-  roadHeat: "tr",
-  gravelHeat: "tg",
-  offroadHeat: "to",
 } as const;
 
 /** [minLon, minLat, maxLon, maxLat] */
@@ -65,11 +60,12 @@ export interface Stats {
   kommuner: Record<string, KommuneStats>;
   outside: { boxes: BBox[] };
   rides: RideStats[];
-  /** Present when match had Strava heat tiles, so edges carry `t`. Older stats files lack it, or its bbox (where edges were sampled). */
-  heat?: { zoom: number; edges_with_heat: number; bbox?: BBox } | null;
 }
 
-/** Overlay tiles from pnpm heat:tiles, served under heat/ (cache/heat/tiles/meta.json). */
+/** The heat project (cache/heat/tiles): its own Pages project, the local copy in dev. */
+export const HEAT_BASE = import.meta.env.DEV ? `${import.meta.env.BASE_URL}heat/` : "https://nyvei-heat.pages.dev/";
+
+/** Overlay tiles from pnpm heat:tiles (meta.json); bbox is also where match sampled edge heat. */
 export interface HeatMeta {
   bbox: BBox;
   minzoom: number;
@@ -80,17 +76,27 @@ export interface HeatMeta {
   colors: Record<string, string>;
 }
 
-/** The heat overlay's meta.json, or null when the site has no heat tiles. */
-export async function loadHeatMeta(): Promise<HeatMeta | null> {
+/** A JSON file of the heat project, or null when there is none. */
+async function heatJson<T>(name: string): Promise<T | null> {
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}heat/meta.json`);
+    const res = await fetch(`${HEAT_BASE}${name}`);
     // Pages answers unknown paths with index.html, so check the type too.
     if (!res.ok || !res.headers.get("content-type")?.includes("json")) return null;
-    return (await res.json()) as HeatMeta;
+    return (await res.json()) as T;
   } catch {
     return null;
   }
 }
+
+export const loadHeatMeta = () => heatJson<HeatMeta>("meta.json");
+
+/** Heat per edge: [t, tr, tg, to], each 0..100 (pipeline/match.ts); an edge that is missing has none. */
+export type EdgeHeatValues = [number, number, number, number];
+/** Per edge file key (EdgeFile.key), per edge id. */
+export type EdgeHeat = Record<string, Record<string, EdgeHeatValues>>;
+export const EDGE_HEAT_URL = `${HEAT_BASE}edges.json`;
+let edgeHeat: Promise<EdgeHeat | null> | undefined;
+export const loadEdgeHeat = () => (edgeHeat ??= heatJson<EdgeHeat>("edges.json"));
 
 /** One lazily loaded edge file and the boxes it has edges in. */
 export interface EdgeFile {

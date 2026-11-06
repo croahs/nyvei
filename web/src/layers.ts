@@ -4,7 +4,7 @@
 // here sits below the edge groups, so `below` is the lowest edge anchor.
 
 import type * as maplibregl from "maplibre-gl";
-import { loadHeatMeta, type Stats } from "./data";
+import { HEAT_BASE, type HeatMeta } from "./data";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
@@ -57,7 +57,14 @@ function save(s: Saved): void {
   }
 }
 
-export async function setupMapSection(map: maplibregl.Map, below: string, stats: Stats, setEdgeHeat: (on: boolean) => void): Promise<void> {
+/** `meta` is the heat overlay's, null without overlays; `hasEdgeHeat` whether edge heat loaded. */
+export function setupMapSection(
+  map: maplibregl.Map,
+  below: string,
+  meta: HeatMeta | null,
+  hasEdgeHeat: boolean,
+  setEdgeHeat: (on: boolean) => void,
+): void {
   const saved = load();
   if (!BASEMAPS[saved.basemap]) saved.basemap = "positron";
 
@@ -89,9 +96,8 @@ export async function setupMapSection(map: maplibregl.Map, below: string, stats:
     save(saved);
   });
 
-  // Bike heat on the edges: only when match had heat tiles.
+  // Bike heat on the edges: only when the heat project has edges.json.
   const edgeHeat = $<HTMLInputElement>("#edge-heat");
-  const hasEdgeHeat = !!stats.heat?.edges_with_heat;
   $("#edge-heat-row").hidden = !hasEdgeHeat;
   edgeHeat.checked = hasEdgeHeat && saved.edgeHeat;
   const applyEdgeHeat = () => {
@@ -105,15 +111,14 @@ export async function setupMapSection(map: maplibregl.Map, below: string, stats:
     save(saved);
   });
 
-  // Heat overlays: only when the site has tiles (pnpm heat:tiles; a build needs PUBLISH_HEAT=1).
-  const meta = await loadHeatMeta();
+  // Heat overlays: only when the heat project has tiles (pnpm heat:tiles, pnpm heat:pages).
   const box = $("#heat-overlays");
   if (!meta || !meta.layers.length) {
     box.hidden = true;
     return;
   }
   box.hidden = false;
-  const base = new URL(`${import.meta.env.BASE_URL}heat/`, location.href).href;
+  const base = new URL(HEAT_BASE, location.href).href;
   for (const layer of meta.layers) {
     const id = `heat-${layer}`;
     map.addSource(id, {

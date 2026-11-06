@@ -12,13 +12,17 @@ when a decision lands; never append a contradicting section.
 - The Intervals.icu API key lives in `.env` (gitignored) as
   `INTERVALS_API_KEY`. Never commit it, never print it.
 - `cache/` is derived and gitignored. Everything in it must be
-  reproducible from `pnpm rides` and `pnpm roads`.
+  reproducible from `pnpm rides`, `pnpm roads` and `pnpm heat` (then
+  `pnpm heat:tiles`).
 - Ridden-road data reveals where the owner lives. Nothing under
   `web/public/data/` is published anywhere without the privacy zone from
   PLAN.md phase 4.
-- Strava heat tiles are derived Strava data for personal use. They go into
-  a build only with `PUBLISH_HEAT=1`, which the owner sets; never set it
-  on their behalf. Strava cookies live in `.env` like the Intervals.icu key.
+- Strava heat tiles are derived Strava data for personal use. They live in
+  `cache/heat` on the owner's machine and in the separate `nyvei-heat`
+  Pages project, which only the owner deploys (`pnpm heat:pages`); the
+  site fetches heat from there at runtime, so the site build and the edge
+  files never carry heat. Strava cookies live in `.env` like the
+  Intervals.icu key.
 - Code, comments, commit messages and docs in English.
 
 ## Verifying

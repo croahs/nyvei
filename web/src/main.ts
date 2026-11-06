@@ -3,7 +3,20 @@ import type { ExpressionSpecification, LngLatBoundsLike, MapGeoJSONFeature } fro
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "./style.css";
-import { edgeFiles, loadStats, loadTrack, P, type BBox, type EdgeFile, type RideStats, type Stats } from "./data";
+import {
+  EDGE_HEAT_URL,
+  edgeFiles,
+  loadEdgeHeat,
+  loadHeatMeta,
+  loadStats,
+  loadTrack,
+  P,
+  type BBox,
+  type EdgeFile,
+  type EdgeHeat,
+  type RideStats,
+  type Stats,
+} from "./data";
 import { setupMapSection } from "./layers";
 import { setupRoute, type RoutePanel } from "./routepanel";
 
@@ -60,9 +73,12 @@ let route: RoutePanel | undefined;
 const started = performance.now();
 
 let edgeHeat = false;
-/** Bike heat ramp (edge `t`, 0..100); mirrored by .heat-ramp in style.css. */
+/** Edge heat from the heat project, null when there is none; joined onto the edges as feature-state `t`. */
+let heat: EdgeHeat | null = null;
+const heated = new Set<string>();
+/** Bike heat ramp (feature-state `t`, 0..100); mirrored by .heat-ramp in style.css. */
 const HEAT_RAMP: ExpressionSpecification = [
-  "interpolate", ["linear"], ["coalesce", ["get", P.heat], 0],
+  "interpolate", ["linear"], ["coalesce", ["feature-state", "t"], 0],
   0, "#c3c8cf", 10, "#fcc2d7", 30, "#f06595", 60, "#c2255c", 90, "#5c0f2e",
 ];
 const groupColor = (g: Group): string | ExpressionSpecification => (edgeHeat && g.heat ? HEAT_RAMP : (selected && g.muted) || g.color);
@@ -71,6 +87,16 @@ function setEdgeHeat(on: boolean): void {
   edgeHeat = on;
   for (const k of loaded) for (const g of GROUPS) if (g.heat) map.setPaintProperty(`${g.id}-${k}`, "line-color", groupColor(g));
 }
+/** Puts a loaded edge file's bike heat on its features, once. */
+function applyHeat(key: string): void {
+  const source = `edges-${key}`;
+  if (!heat || heated.has(key) || !map.getSource(source) || !map.isSourceLoaded(source)) return;
+  heated.add(key);
+  for (const [id, v] of Object.entries(heat[key] ?? {})) map.setFeatureState({ source, id }, { t: v[0] });
+}
+map.on("sourcedata", (e) => {
+  if (e.isSourceLoaded && e.sourceId.startsWith("edges-")) applyHeat(e.sourceId.slice("edges-".length));
+});
 const interactive = () => [...loaded].flatMap((k) => [...GROUPS.map((g) => `${g.id}-${k}`), `${NEW_GROUP}-${k}`]);
 
 function setupLayers(): void {
@@ -93,7 +119,7 @@ function setupLayers(): void {
 function addFile(f: EdgeFile): void {
   loaded.add(f.key);
   const source = `edges-${f.key}`;
-  map.addSource(source, { type: "geojson", data: f.url, maxzoom: 14, tolerance: 0.5 });
+  map.addSource(source, { type: "geojson", data: f.url, maxzoom: 14, tolerance: 0.5, promoteId: P.id });
   for (const g of GROUPS) {
     map.addLayer(
       {
@@ -198,10 +224,10 @@ function showEdge(e: maplibregl.MapMouseEvent): void {
     ["Length", `${p[P.length]} m`],
     ["First ridden", first ? `${first}${ride ? ` · ${ride.name}` : ""}` : "not yet"],
   ];
-  if (stats.heat) {
-    const h = (k: string) => (p[k] as number | undefined) ?? 0;
-    rows.push(["Bike heat", `${h(P.heat)} / 100, busiest of Strava's road, gravel and MTB layers`]);
-    rows.push(["Road · gravel · off-road", `${h(P.roadHeat)} · ${h(P.gravelHeat)} · ${h(P.offroadHeat)}`]);
+  if (heat) {
+    const [t, tr, tg, to] = heat[f.source.slice("edges-".length)]?.[p[P.id] as string] ?? [0, 0, 0, 0];
+    rows.push(["Bike heat", `${t} / 100, busiest of Strava's road, gravel and MTB layers`]);
+    rows.push(["Road · gravel · off-road", `${tr} · ${tg} · ${to}`]);
   }
   const title = document.createElement("strong");
   title.textContent = (p[P.name] as string | undefined) ?? "Unnamed";
@@ -307,16 +333,21 @@ async function start(): Promise<void> {
     return;
   }
   files = edgeFiles(stats);
+  // Heat loads alongside the roads; the map and router take it once it is here.
+  const heatLoad = Promise.all([loadHeatMeta(), loadEdgeHeat()]);
   renderTotals();
   renderKommuner();
   renderRides();
   $("#generated").textContent = `Data from ${stats.generated.slice(0, 16).replace("T", " ")}`;
   await mapReady;
   setupLayers();
-  void setupMapSection(map, `anchor-${GROUPS[0]!.id}`, stats, setEdgeHeat);
-  route = setupRoute(map, files, stats.heat?.bbox);
   loadVisible();
   map.on("moveend", loadVisible);
+  const [meta, edges] = await heatLoad;
+  heat = edges;
+  for (const k of loaded) applyHeat(k);
+  setupMapSection(map, `anchor-${GROUPS[0]!.id}`, meta, !!heat, setEdgeHeat);
+  route = setupRoute(map, files, meta?.bbox, heat ? new URL(EDGE_HEAT_URL, location.href).href : undefined);
   const wanted = new URLSearchParams(location.search).get("ride");
   const ride = stats.rides.find((r) => r.id === wanted);
   if (ride) void selectRide(ride);

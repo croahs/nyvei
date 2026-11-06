@@ -50,19 +50,28 @@ project is merged in here.
   `tg`, `to`), one of which the route builder prefers so loops stay on
   roads people ride, so a loop does not pick a road just because it is unridden. Tiles
   are fetched with the cookies of a logged-in strava.com session, for
-  personal use only. They are derived Strava data, so the overlay tiles
-  go into a build only with `PUBLISH_HEAT=1` (environment or `.env`). The
-  owner publishes them on nyvei.pages.dev without Cloudflare Access: the
-  site is personal and of no interest to anyone else. The per-edge heat
-  numbers are published with the edge files. Heat covers gravelheater's "sandnes"
+  personal use only. All heat is one folder, `cache/heat/tiles`: the
+  overlay tiles, meta.json and edges.json (per edge file and edge id, its
+  four heats, written by `pnpm match`). That folder is its own Cloudflare
+  Pages project, nyvei-heat.pages.dev, deployed with `pnpm heat:pages`
+  from the owner's machine whenever the heat is refreshed, which is rare;
+  it sends `Access-Control-Allow-Origin: *`. The site build and the edge
+  files carry no heat, so the nightly workflow can rebuild and deploy
+  the site without it; the browser fetches the heat project and joins it
+  onto the edges by id (the router in its worker, the map colouring as
+  feature-state). Neither is behind Cloudflare Access: the site is
+  personal and of no interest to anyone else. Edge ids come from each
+  side's own road data, so an edge whose id changed since the last local
+  `pnpm match` has no heat until the next `pnpm heat:pages`. Heat covers gravelheater's "sandnes"
   box (Egersund to Nord-Jæren and Suleskard); edges outside it have no
   heat and route as before.
 - **Published on Cloudflare Pages**, repo stays private. GitHub Pages
-  and Actions minutes are not available on this account's plan for a
-  private repo. `pnpm pages` deploys `web/dist` with wrangler, from this
-  machine or from the Publish workflow (nightly, on push, on demand) once
-  Actions minutes work. Cloudflare's 25 MB limit per file is why outside
-  edges are one file per ride box.
+  is not available on this account's plan for a private repo. `pnpm
+  pages` deploys `web/dist` with wrangler, from this machine or from the
+  Publish workflow (nightly, on push, on demand), which also writes the
+  new km back. Heat is a separate project (above), so either deploy has
+  it. Cloudflare's 25 MB limit per file is why outside edges are one file
+  per ride box.
 
 ## Architecture
 
@@ -75,8 +84,9 @@ pipeline/            pnpm scripts, run locally
                      (fetches cache/roads/ride-<id>.json for rides outside the region)
   writeback.ts       stats.json -> one "nyvei:" line per activity description on Intervals.icu
   heat.ts            Strava heatmap -> cache/heat/raw/<layer>/<z>/<x>/<y>.png (resumable)
-  heattiles.ts       raw layers -> cache/heat/tiles/{gravel,offroad}/ + meta.json
-                     (match.ts reads cache/heat/raw for each edge's bike heat)
+  heattiles.ts       raw layers -> cache/heat/tiles/{road,gravel,offroad}/ + meta.json
+                     (match.ts reads cache/heat/raw and writes cache/heat/tiles/edges.json;
+                     pnpm heat:pages deploys cache/heat/tiles as nyvei-heat)
 web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
 ```
@@ -153,9 +163,8 @@ also where gravel fires, unlike the overlay, and capped at 1). Each of
 those three is scaled so its 95th percentile over heated edges is 100,
 because gravel − road is a difference and mostly small: unscaled, the
 median heated edge had gravel heat 6 and a gravel preference barely
-moved a loop. The
-site serves overlay tiles from `cache/heat/tiles` through a Vite plugin in
-dev; base maps (Positron, Kartverket topo and gråtone, OSM, OpenTopoMap)
+moved a loop. In dev a Vite plugin serves `cache/heat/tiles` at /heat/, so
+heat works without a deploy; base maps (Positron, Kartverket topo and gråtone, OSM, OpenTopoMap)
 are a raster layer under everything, chosen in the panel.
 
 **route.** Edge cost = length × (ridden ? 4 : 1), bonus edges × 2 on top
@@ -239,12 +248,12 @@ Each phase ends on a checkable criterion.
   on unridden countable roads, routed in 40-70 ms after a 2-4 s graph
   build, and its GPX opens in a GPX viewer. Loading on the Garmin is
   still open.
-- **Phase 4, publish.** Privacy zone, Cloudflare Pages, nightly GitHub
-  Action. Done when `pnpm pages` puts the map on the pages.dev URL with
+- **Phase 4, publish.** Privacy zone, Cloudflare Pages, nightly update.
+  Done when `pnpm pages` puts the map on the pages.dev URL with
   no published edge or track point inside the zone (checked with a
   script against a test point). Live at https://nyvei.pages.dev, checked
-  with a script against the real zone (0 published points inside); the
-  Action is blocked on GitHub Actions billing.
+  with a script against the real zone (0 published points inside). The
+  Publish workflow runs nightly and on every push.
 
 - **Phase 5, gravelheater merged in.** Heat overlays, base maps and bike
   heat routing in this site. Done when, from Sandnes with real tiles, a
@@ -271,10 +280,6 @@ Each phase ends on a checkable criterion.
 - Data size: the edge files are about 120 MB in all and the first full
   view takes about 8 s. Vector tiles (PMTiles) would cut that on the
   published site.
-- Heat in CI: the Publish workflow has no heat tiles (the raw layers are
-  about 330 MB; cookies last a day), yet it runs on every push to main
-  and nightly. Each run replaces a local heat deploy with edges without
-  `t` and no overlays.
 - Heat calibration: whether heat ≥ 25 is the right line for "roads
   cyclists use", whether k = 0.7 is the right default, and whether the
   95th percentile is the right scale for gravel and off-road. From

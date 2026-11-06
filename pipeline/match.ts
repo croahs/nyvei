@@ -26,17 +26,20 @@
 //   l  length in metres                  d  first ridden date, absent when unridden
 //   r  first activity id, absent when unridden
 //   p  1 when the first ride counted the edge as new km (primary), else absent
-//   t  bike heat 0..100 from the Strava heatmap, brightest sport layer
-//   tr road heat (Ride layer)   tg gravel heat   to off-road heat, 0..100, each
-//      scaled so its 95th percentile over heated edges is 100 (lib/heat.ts, heatScale);
-//      all heats absent when 0 or when cache/heat/raw has no tiles (pnpm heat)
 // The kommune is the file name; outside files are numbered like the ride boxes
 // in stats.json. Files stay under 25 MB, Cloudflare Pages' limit per file.
 // web/src/data.ts mirrors this mapping.
+//
+// Heat is not in the edge files. When cache/heat/raw has tiles (pnpm heat), match
+// also writes cache/heat/tiles/edges.json, the heat part of the heat project
+// (PLAN.md, heat): per edge file key (kommune slug, or outside-<n>), per edge id,
+// [t, tr, tg, to], each 0..100. t is the brightest sport layer; tr road (Ride
+// layer), tg gravel and to off-road are each scaled so their 95th percentile over
+// heated edges is 100 (lib/heat.ts, heatScale). Edges with no heat are left out.
 
 import { readFileSync, rmSync } from "node:fs";
 import Flatbush from "flatbush";
-import { HEAT, KOMMUNER, MATCH, PATHS, type Tier } from "./config";
+import { HEAT_PATHS, KOMMUNER, MATCH, PATHS, type Tier } from "./config";
 import { kmByTier, splitWays, type Edge, type SourcedWay } from "./lib/edges";
 import {
   bboxContains,
@@ -384,8 +387,6 @@ async function main(): Promise<void> {
     /** Where outside.json has edges: the ride boxes fetched outside the region. */
     outside: { boxes: rideRoads.map((r) => bboxArray(r.bbox)) },
     rides,
-    /** Strava heatmap behind the edges' heat, null when there were no raw tiles. bbox is where edges were sampled. */
-    heat: null as null | { zoom: number; edges_with_heat: number; bbox: [number, number, number, number] },
   };
 
   // Edge files grouped by kommune, or by ride box for edges outside the region;
@@ -406,6 +407,10 @@ async function main(): Promise<void> {
     return `${PATHS.outsideOut}/${i}.json`;
   };
   const byFile = new Map<string, unknown[]>();
+  // The site's key for an edge file: the kommune slug, or outside-<n>.
+  const fileKey = (path: string) =>
+    path.startsWith(PATHS.outsideOut) ? `outside-${path.slice(PATHS.outsideOut.length + 1, -5)}` : path.slice(PATHS.kommunerOut.length + 1, -5);
+  const heatByFile: Record<string, Record<string, number[]>> = {};
   let zonedEdges = 0;
   const heat = HeatSampler.open();
   const heats = heat ? edges.map((e) => (e.coords.some(inZone) ? undefined : heat.edge(e.coords))) : [];
@@ -421,9 +426,14 @@ async function main(): Promise<void> {
     let list = byFile.get(file);
     if (!list) byFile.set(file, (list = []));
     const h = heats[i];
-    const t = h ? Math.round(100 * h.any) || undefined : undefined;
-    if (t) heated++;
-    const scaled = (m: HeatMode) => (h ? Math.min(100, Math.round((100 * h[m]) / scale[m])) || undefined : undefined);
+    if (h) {
+      const scaled = (m: HeatMode) => Math.min(100, Math.round((100 * h[m]) / scale[m]));
+      const v = [Math.round(100 * h.any), scaled("road"), scaled("gravel"), scaled("offroad")];
+      if (v.some((x) => x > 0)) {
+        heated++;
+        (heatByFile[fileKey(file)] ??= {})[e.id] = v;
+      }
+    }
     list.push({
       type: "Feature",
       geometry: { type: "LineString", coordinates: e.coords.map(([lon, lat]) => [round5(lon), round5(lat)]) },
@@ -438,10 +448,6 @@ async function main(): Promise<void> {
         d: r?.first_date,
         r: r?.first_activity,
         p: counted.has(e.id) ? 1 : undefined,
-        t,
-        tr: scaled("road"),
-        tg: scaled("gravel"),
-        to: scaled("offroad"),
       },
     });
   }
@@ -450,10 +456,10 @@ async function main(): Promise<void> {
     rmSync(path, { recursive: true, force: true });
   }
   if (heat) {
-    stats.heat = { zoom: heat.zoom, edges_with_heat: heated, bbox: HEAT.bbox };
-    console.log(`bike heat from z${heat.zoom} tiles on ${heated} of ${edges.length - zonedEdges} published edges`);
+    const bytes = writeJson(`${HEAT_PATHS.tiles}/edges.json`, heatByFile);
+    console.log(`bike heat from z${heat.zoom} tiles on ${heated} of ${edges.length - zonedEdges} published edges, ${mb(bytes)} in ${HEAT_PATHS.tiles}/edges.json`);
     console.log(`  95th percentiles scaled to 100: road ${Math.round(100 * scale.road)}, gravel ${Math.round(100 * scale.gravel)}, off-road ${Math.round(100 * scale.offroad)}`);
-  } else console.log("no heat tiles in cache/heat/raw (pnpm heat): edges carry no bike heat");
+  } else console.log("no heat tiles in cache/heat/raw (pnpm heat): no edge heat written");
   let edgesBytes = 0;
   for (const [path, features] of byFile) edgesBytes += writeJson(path, { type: "FeatureCollection", features });
 

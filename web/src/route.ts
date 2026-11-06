@@ -4,8 +4,8 @@
 // undirected. Edge cost = length × 4 when ridden × 2 when bonus × (1 − k × heat)
 // (PLAN.md, route), so the cheapest path prefers unridden roads, uses a track only to
 // reach one, and with "prefer bike heat" k > 0 bends towards roads other cyclists ride
-// (heat 0..1 from the Strava heatmap: the edges' `tr` for road, max(ROAD_SHARE × `tr`,
-// `tg`) for gravel, the same with `to` for off-road). In gravel and off-road mode a
+// (heat 0..1 from the Strava heatmap, the edge heat file's `tr` for road, max(ROAD_SHARE ×
+// `tr`, `tg`) for gravel, the same with `to` for off-road). In gravel and off-road mode a
 // track or path whose own heat is at least POPULAR_HEAT counts as a road: no bonus
 // factor, and a destination like an unridden road. Roads only sets bonus edges to
 // Infinity; "skip where no one rides" does that for every edge inside the heat bbox
@@ -14,7 +14,7 @@
 // retracing. A sweep instead rides every unridden edge it can reach, nearest first,
 // and heads home when the distance is used up.
 
-import { P } from "./data";
+import { P, type EdgeHeatValues } from "./data";
 
 export type LonLat = [number, number];
 
@@ -51,8 +51,9 @@ const POPULAR_HEAT = 0.25;
  * gravel − road, or of ROAD_SHARE of it and (gravel + mtb) − road.
  */
 export type HeatMode = "road" | "gravel" | "offroad";
-const HEAT_KEYS: Record<HeatMode, string> = { road: P.roadHeat, gravel: P.gravelHeat, offroad: P.offroadHeat };
-const HEAT_MODES = Object.keys(HEAT_KEYS) as HeatMode[];
+/** Each mode's own value in an edge's [t, tr, tg, to] (web/src/data.ts). */
+const HEAT_INDEX: Record<HeatMode, number> = { road: 1, gravel: 2, offroad: 3 };
+const HEAT_MODES = Object.keys(HEAT_INDEX) as HeatMode[];
 /**
  * Road heat's weight in gravel and off-road mode: popular roads still beat dead ones,
  * but a busy gravel track beats a busy asphalt road, so the modes stay apart.
@@ -138,7 +139,8 @@ export class GraphBuilder {
     return !!bb && c[0]! >= bb[0] && c[1]! >= bb[1] && c[0]! <= bb[2] && c[1]! <= bb[3];
   }
 
-  add(fc: EdgeCollection): void {
+  /** One edge file, with its edges' heat by id when the heat project has it. */
+  add(fc: EdgeCollection, heat?: Record<string, EdgeHeatValues>): void {
     for (const f of fc.features) {
       const p = f.properties;
       const from = p[P.from] as number | undefined;
@@ -151,9 +153,10 @@ export class GraphBuilder {
       const countable = p[P.countable] === 1;
       let flags = (countable ? COUNTABLE : 0) | (p[P.firstDate] ? RIDDEN : 0) | (STREETS.has(p[P.highway] as string) ? STREET : 0);
       if (this.inHeat(cs[0]!) && this.inHeat(cs[cs.length - 1]!)) flags |= IN_HEAT;
-      const road = ((p[HEAT_KEYS.road] as number | undefined) ?? 0) / 100;
+      const h = heat?.[p[P.id] as string];
+      const road = (h?.[HEAT_INDEX.road] ?? 0) / 100;
       for (const m of HEAT_MODES) {
-        const own = ((p[HEAT_KEYS[m]] as number | undefined) ?? 0) / 100;
+        const own = (h?.[HEAT_INDEX[m]] ?? 0) / 100;
         this.heat[m].push(m === "road" ? road : Math.max(ROAD_SHARE * road, own));
         if (!countable && m !== "road" && own >= POPULAR_HEAT) flags |= TRACK[m];
       }

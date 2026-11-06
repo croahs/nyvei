@@ -9,8 +9,8 @@
 // the formulas are gravelScore and offroadScore in lib/heat.ts. A pixel lands
 // in gravel if that branch fires, else in offroad if that one does. Road stops
 // at HEAT.roadMaxZoom (meta.json layerMaxzoom) to keep a deploy's file count down.
-// The tiles are derived Strava data: web/vite.config.ts only copies them into
-// a build with PUBLISH_HEAT=1 (see PLAN.md, heat).
+// cache/heat/tiles is the whole heat project (PLAN.md, heat): pnpm heat:pages
+// deploys it on its own, apart from the site.
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -87,7 +87,8 @@ function buildPyramid(layer: Layer, z: number, tiles: { x: number; y: number }[]
 function main(): void {
   const z = zoomArg(process.argv.slice(2));
   const tiles = tilesInBbox(HEAT.bbox, z);
-  rmSync(HEAT_PATHS.tiles, { recursive: true, force: true }); // stale tiles would leak into the pyramid
+  // Stale tiles would leak into the pyramid; edges.json (pnpm match) stays.
+  for (const layer of LAYERS) rmSync(`${HEAT_PATHS.tiles}/${layer}`, { recursive: true, force: true });
   const written: Record<Layer, { x: number; y: number }[]> = { road: [], gravel: [], offroad: [] };
   let raw = 0;
   for (const { x, y } of tiles) {
@@ -141,6 +142,8 @@ function main(): void {
     colors: Object.fromEntries(LAYERS.map((l) => [l, `rgb(${HEAT.colors[l]!.join(", ")})`])),
   };
   writeFileSync(`${HEAT_PATHS.tiles}/meta.json`, JSON.stringify(meta, null, 2));
+  // The site fetches the heat project from another origin, and WebGL needs CORS for tiles.
+  writeFileSync(`${HEAT_PATHS.tiles}/_headers`, "/*\n  Access-Control-Allow-Origin: *\n");
   console.log(`wrote ${HEAT_PATHS.tiles}/`);
 }
 

@@ -19,11 +19,11 @@ export interface RoutePanel {
   readonly picking: boolean;
 }
 
-/** `heatBBox` is where match sampled bike heat (stats.json), needed for "avoid hike-a-bike". */
-export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BBox): RoutePanel {
+/** `heatBBox` is where match sampled heat (the heat meta.json), needed for "skip where no one rides"; `heatUrl` is the heat project's edges.json. */
+export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BBox, heatUrl?: string): RoutePanel {
   const worker = new Worker(new URL("./route.worker.ts", import.meta.url), { type: "module" });
   const send = (r: Request) => worker.postMessage(r);
-  send({ type: "load", urls: files.map((f) => new URL(f.url, location.href).href), heatBBox });
+  send({ type: "load", files: files.map((f) => ({ key: f.key, url: new URL(f.url, location.href).href })), heatUrl, heatBBox });
 
   map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addLayer({
