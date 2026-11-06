@@ -4,7 +4,7 @@
 // the worker took 1.4 s, while parsing on the main thread and posting the
 // objects over took 4-5 s, 3 s of it structured cloning that blocks the page.
 
-import { GraphBuilder, makeLoop, type Graph, type Loop, type LoopOptions, type LonLat } from "./route";
+import { GraphBuilder, makeLoop, makeSweep, type Graph, type Loop, type LoopOptions, type LonLat } from "./route";
 
 export type Request =
   | { type: "load"; urls: string[]; heatBBox?: [number, number, number, number] }
@@ -12,7 +12,7 @@ export type Request =
 
 export type Response =
   | { type: "progress"; done: number; of: number }
-  | { type: "ready"; nodes: number; edges: number; hasHeat: boolean; hasHike: boolean; ms: number }
+  | { type: "ready"; nodes: number; edges: number; hasHeat: boolean; hasDead: boolean; ms: number }
   | { type: "loop"; id: number; loop: Loop; ms: number }
   | { type: "error"; id?: number; message: string };
 
@@ -32,7 +32,7 @@ async function load(urls: string[], heatBBox?: [number, number, number, number])
     }),
   );
   const g = builder.finish();
-  post({ type: "ready", nodes: g.nodes, edges: g.edges, hasHeat: g.hasHeat, hasHike: g.hasHike, ms: performance.now() - t0 });
+  post({ type: "ready", nodes: g.nodes, edges: g.edges, hasHeat: g.hasHeat, hasDead: g.hasDead, ms: performance.now() - t0 });
   return g;
 }
 
@@ -47,7 +47,7 @@ onmessage = async (e: MessageEvent<Request>) => {
     if (!graph) throw new Error("Graph not loaded.");
     const g = await graph;
     const t0 = performance.now();
-    const loop = makeLoop(g, m.start, m);
+    const loop = (m.sweep ? makeSweep : makeLoop)(g, m.start, m);
     post({ type: "loop", id: m.id, loop, ms: performance.now() - t0 });
   } catch (err) {
     post({ type: "error", id: m.id, message: err instanceof Error ? err.message : String(err) });

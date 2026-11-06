@@ -173,19 +173,26 @@ unridden one: at 0.8, 40 km loops from Ålgård were only 25 to 41 %
 unridden. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
 countable edges, because many bonus ways are hard going on a bike.
-"Avoid hike-a-bike" (on by default) does the same only for bonus edges with both ends in
-the heat bbox (`heat.bbox` in stats.json) and no `t`: a track or path no
-cyclist on Strava rides is the broadest sign of one you push the bike
-on. It is a blunt cut (5237 of 8862 bonus km in the box have no `t`, a
-new or quiet path that rides fine goes too); OSM's `sac_scale`,
-`mtb:scale` and `smoothness`, the Strava hike layer and gradient are
-sharper and not used yet. The graph (nodes
+"Skip where no one rides" (on by default) does the same for every edge,
+roads included, with both ends in the heat bbox (`heat.bbox` in
+stats.json) and heat 0 in the chosen mode: the owner treats the road
+heatmap as the judge of what is worth riding. It leaves out 631 of 3297
+unridden countable km in the box (222 of 1382 km residential), which
+then never get ridden by a route though they still count in the stats.
+In gravel and off-road mode a bonus edge whose own heat (`tg` or `to`)
+is at least 25 counts as a road: no bonus factor, and it joins the
+destination clusters, because a track good enough for that much gravel
+heat is good enough to route a gravel ride over (86 unridden km in the
+box at gravel ≥ 25). Gravel laps that are not in OSM at all stay out of
+reach. OSM's `sac_scale`, `mtb:scale` and `smoothness`, the Strava hike
+layer and gradient would sharpen the cut and are not used. The graph (nodes
 are the `a`/`b` OSM node ids, edges undirected) is built in a Web Worker
 that fetches the edge files itself; that is faster than handing it
 MapLibre's parsed copy, because structured cloning 400k features blocks
 the page for seconds. Given start and target distance D: Dijkstra from
 the start, cut at D/2 of path length; clusters are connected components
-of unridden countable edges, ranked by their countable km inside that
+of unridden destination edges (countable, plus the busy tracks above in
+gravel and off-road mode), ranked by their km inside that
 reach (weighted by (1 − k + k × heat), so a busy cluster outranks a
 dead one), counting only clusters that reach at least 0.35 D out (a cluster
 next to the start cannot turn a loop of length D). In the chosen cluster
@@ -194,7 +201,15 @@ metre; Dijkstra back with the outbound edges × 4 again, then r is
 rescaled until out + back is within 5 % of D (at most 8 tries). "Try
 another" walks the clusters in rank order, discounting any within 45° of
 an earlier one's bearing so the next loop heads somewhere else. The panel
-shows the share of the loop on edges with the chosen heat ≥ 25. Export
+shows the share of the loop on edges with the chosen heat ≥ 25. A loop
+picks up unridden streets near home only on its way out and back, and
+a dead end only as its turnaround, so "Sweep" covers those: from the
+start it rides every unridden destination edge it reaches, nearest
+first (the next one right at the current node if it fits, else the
+cheapest path to the nearest that does, with edges it has ridden × 4),
+dead ends included, as long as what is left of D still covers the
+cheapest way home, then goes home. A 20 km sweep from central Sandnes
+rode 253 unridden stretches, 11.3 km of new road, in under 0.1 s. Export
 GPX 1.1. Own Dijkstra first; BRouter with nogo areas is the fallback if
 loops come out ugly.
 

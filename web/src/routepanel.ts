@@ -49,11 +49,12 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
 
   const pick = $<HTMLButtonElement>("#route-pick");
   const go = $<HTMLButtonElement>("#route-go");
+  const sweep = $<HTMLButtonElement>("#route-sweep");
   const next = $<HTMLButtonElement>("#route-next");
   const gpx = $<HTMLButtonElement>("#route-gpx");
   const kmInput = $<HTMLInputElement>("#route-km");
   const roadsOnly = $<HTMLInputElement>("#route-roads");
-  const avoidHike = $<HTMLInputElement>("#route-hike");
+  const skipDead = $<HTMLInputElement>("#route-dead");
   const heatK = $<HTMLInputElement>("#route-heat");
   const heatMode = $<HTMLSelectElement>("#route-heat-mode");
   const heatRow = $("#route-heat-row");
@@ -64,8 +65,8 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
   const result = $("#route-result");
 
   const sync = () => {
-    go.disabled = !ready || !start;
-    next.disabled = !ready || !loop;
+    go.disabled = sweep.disabled = !ready || !start;
+    next.disabled = !ready || !loop || loop.cluster === null;
     gpx.disabled = !loop;
     pick.classList.toggle("active", picking);
     map.getCanvas().style.cursor = picking ? "crosshair" : "";
@@ -80,7 +81,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
     sync();
   };
 
-  const generate = () => {
+  const generate = (asSweep = false) => {
     if (!start || !ready) return;
     const target = Number(kmInput.value);
     if (!(target > 0)) return;
@@ -93,9 +94,10 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
       km: target,
       variant,
       roadsOnly: roadsOnly.checked,
-      avoidHike: avoidHike.checked,
+      skipDead: skipDead.checked,
       heatK: Number(heatK.value),
       heatMode: heatMode.value as HeatMode,
+      sweep: asSweep,
     });
   };
 
@@ -113,7 +115,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
   });
   kmInput.addEventListener("change", () => (variant = 0));
   roadsOnly.addEventListener("change", () => (variant = 0));
-  avoidHike.addEventListener("change", () => (variant = 0));
+  skipDead.addEventListener("change", () => (variant = 0));
   heatK.addEventListener("input", showHeatK);
   heatK.addEventListener("change", () => (variant = 0));
   heatMode.addEventListener("change", () => (variant = 0));
@@ -121,6 +123,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
     variant = 0;
     generate();
   });
+  sweep.addEventListener("click", () => generate(true));
   next.addEventListener("click", () => {
     variant++;
     generate();
@@ -135,7 +138,7 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
     else if (m.type === "ready") {
       ready = true;
       heatRow.hidden = !m.hasHeat;
-      $("#route-hike-row").hidden = !m.hasHike;
+      $("#route-dead-row").hidden = !m.hasDead;
       status.textContent = `Route graph ready: ${m.edges.toLocaleString("en")} edges in ${(m.ms / 1000).toFixed(1)} s`;
     } else if (m.type === "error") {
       if (m.id === undefined || m.id === requestId) status.textContent = m.message;
@@ -155,14 +158,15 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
     const bounds = new maplibregl.LngLatBounds(l.coords[0], l.coords[0]);
     for (const c of l.coords) bounds.extend(c);
     map.fitBounds(bounds, { padding: 40, maxZoom: 15 });
+    const kind = l.cluster ? "loop" : "sweep";
     const rows: [string, string][] = [
-      ["Loop", `${km(l.totalKm)} km`],
-      ["Unridden roads", `${km(l.unriddenCountableKm)} km, ${Math.round(l.share * 100)} % of the loop`],
+      [l.cluster ? "Loop" : "Sweep", `${km(l.totalKm)} km`],
+      ["Unridden roads", `${km(l.unriddenCountableKm)} km, ${Math.round(l.share * 100)} % of the ${kind}`],
       ["Unridden tracks and paths", `${km(l.unriddenBonusKm)} km`],
     ];
-    if (l.hikeKm !== null) rows.push(["Tracks and paths no cyclist rides", `${km(l.hikeKm)} km`]);
+    if (l.deadKm !== null) rows.push(["Where no cyclist rides", `${km(l.deadKm)} km`]);
     if (l.popularShare !== null && l.meanHeat !== null) {
-      rows.push([HEAT_LABEL[l.heatMode], `${Math.round(l.popularShare * 100)} % of the loop, mean heat ${Math.round(l.meanHeat * 100)}`]);
+      rows.push([HEAT_LABEL[l.heatMode], `${Math.round(l.popularShare * 100)} % of the ${kind}, mean heat ${Math.round(l.meanHeat * 100)}`]);
     }
     result.replaceChildren(
       ...rows.map(([k, v]) => {
@@ -173,9 +177,10 @@ export function setupRoute(map: maplibregl.Map, files: EdgeFile[], heatBBox?: BB
         return div;
       }),
     );
-    status.textContent = `Cluster ${l.clusterRank + 1} of ${l.clustersInReach} in reach (${km(l.clusterKm)} km unridden) · ${Math.round(
-      roundTrip,
-    )} ms (${Math.round(compute)} ms routing)`;
+    const what = l.cluster
+      ? `Cluster ${l.cluster.rank + 1} of ${l.cluster.inReach} in reach (${km(l.cluster.km)} km unridden)`
+      : `${l.swept} unridden stretches swept`;
+    status.textContent = `${what} · ${Math.round(roundTrip)} ms (${Math.round(compute)} ms routing)`;
   }
 
   sync();

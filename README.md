@@ -80,11 +80,16 @@ loop's length, its unridden road and track km, and the share of the loop
 on unridden roads. **Prefer bike heat** (shown once edges have heat) pulls the loop
 onto roads other cyclists ride, by *road* heat (the Ride layer), or by
 *gravel* (gravel − road, the gold overlay) or *off-road* (gravel + mtb −
-road, the cyan overlay) with road heat at half weight; the panel shows how much of the loop is on them. **Avoid
-hike-a-bike** keeps it off tracks and paths in the heat area that no
-cyclist rides. **Try another** picks a different patch, in another
-direction where there is one; **Download GPX** saves the loop as a GPX
-1.1 track. The route graph builds in the background while the map loads,
+road, the cyan overlay) with road heat at half weight, and in those two
+modes busy gravel or off-road tracks count as roads to head for; the
+panel shows how much of the loop is on them. **Skip where no one rides**
+keeps it off every road, track and path in the heat area with no heat.
+**Try another** picks a different patch, in another direction where
+there is one. **Sweep** instead rides every unridden road it can reach
+from the start, nearest first and dead ends included, and comes home
+when the distance is used up: a short easy spin that ticks off the
+streets around home. **Download GPX** saves the route as a GPX 1.1
+track. The route graph builds in the background while the map loads,
 in a few seconds.
 
 ## Publishing
