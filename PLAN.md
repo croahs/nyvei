@@ -52,10 +52,13 @@ project is merged in here.
   are fetched with the cookies of a logged-in strava.com session, for
   personal use only. All heat is one folder, `cache/heat/tiles`: the
   overlay tiles, meta.json and edges.json (per edge file and edge id, its
-  four heats, written by `pnpm match`). That folder is its own Cloudflare
-  Pages project, nyvei-heat.pages.dev, deployed with `pnpm heat:pages`
-  from the owner's machine whenever the heat is refreshed, which is rare;
-  it sends `Access-Control-Allow-Origin: *`. The site build and the edge
+  four heats, written by `pnpm match`). That folder is the `heat` branch
+  of the Pages project, heat.nyvei.pages.dev, deployed with `pnpm
+  heat:pages` from the owner's machine whenever the heat is refreshed,
+  which is rare; production deploys of the site never touch it, and it
+  sends `Access-Control-Allow-Origin: *`. (Its own project was the first
+  plan, but wrangler now creates new Pages projects as Workers, and that
+  failed.) The site build and the edge
   files carry no heat, so the nightly workflow can rebuild and deploy
   the site without it; the browser fetches the heat project and joins it
   onto the edges by id (the router in its worker, the map colouring as
@@ -86,7 +89,7 @@ pipeline/            pnpm scripts, run locally
   heat.ts            Strava heatmap -> cache/heat/raw/<layer>/<z>/<x>/<y>.png (resumable)
   heattiles.ts       raw layers -> cache/heat/tiles/{road,gravel,offroad}/ + meta.json
                      (match.ts reads cache/heat/raw and writes cache/heat/tiles/edges.json;
-                     pnpm heat:pages deploys cache/heat/tiles as nyvei-heat)
+                     pnpm heat:pages deploys cache/heat/tiles as the heat branch)
 web/                 Vite + MapLibre site, reads public/data/*
 cache/               gitignored
 ```

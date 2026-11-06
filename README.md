@@ -50,10 +50,10 @@ roads other cyclists ride. Both need the raw heatmap tiles in `cache/heat/raw/`:
    `gravel/`, `road/` and `mtb/` folders into `cache/heat/raw/` instead.
 3. `pnpm heat:tiles` builds the overlay tiles.
 4. `pnpm match` gives every edge its bike heat, in `cache/heat/tiles/edges.json`.
-5. `pnpm heat:pages` deploys `cache/heat/tiles` as its own Cloudflare Pages
-   project, `nyvei-heat`, where the published site fetches it. Only needed
-   when the heat changes. First time: `pnpm exec wrangler pages project
-   create nyvei-heat --production-branch main`.
+5. `pnpm heat:pages` deploys `cache/heat/tiles` to the `heat` branch of the
+   Pages project, https://heat.nyvei.pages.dev, where the published site
+   fetches it. Only needed when the heat changes; site deploys never touch
+   it.
 
 The heat area is `HEAT.bbox` in `pipeline/config.ts`. `pnpm dev` serves the
 local heat folder, so heat works there without a deploy. Without heat the

@@ -62,8 +62,8 @@ export interface Stats {
   rides: RideStats[];
 }
 
-/** The heat project (cache/heat/tiles): its own Pages project, the local copy in dev. */
-export const HEAT_BASE = import.meta.env.DEV ? `${import.meta.env.BASE_URL}heat/` : "https://nyvei-heat.pages.dev/";
+/** The heat (cache/heat/tiles): the heat branch of the Pages project, the local copy in dev. */
+export const HEAT_BASE = import.meta.env.DEV ? `${import.meta.env.BASE_URL}heat/` : "https://heat.nyvei.pages.dev/";
 
 /** Overlay tiles from pnpm heat:tiles (meta.json); bbox is also where match sampled edge heat. */
 export interface HeatMeta {
