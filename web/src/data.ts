@@ -74,6 +74,8 @@ export interface HeatMeta {
   bbox: BBox;
   minzoom: number;
   maxzoom: number;
+  /** Layers that stop before maxzoom; the map stretches their last level. */
+  layerMaxzoom?: Record<string, number>;
   layers: string[];
   colors: Record<string, string>;
 }

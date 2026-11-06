@@ -1,5 +1,5 @@
 // Map section of the panel, merged in from gravelheater: raster base maps over
-// the Positron style, the gravel and offroad heat overlays from pnpm heat:tiles,
+// the Positron style, the road, gravel and offroad heat overlays from pnpm heat:tiles,
 // and the switch that colours unridden edges by their bike heat. Every layer
 // here sits below the edge groups, so `below` is the lowest edge anchor.
 
@@ -25,7 +25,12 @@ const BASEMAPS: Record<string, Basemap> = {
     attribution: "© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)",
   },
 };
-const LABELS: Record<string, string> = { gravel: "Gravel (gravel − road)", offroad: "Off-road (mtb + gravel − road)" };
+const LABELS: Record<string, string> = { road: "Road (Ride)", gravel: "Gravel (gravel − road)", offroad: "Off-road (mtb + gravel − road)" };
+const TITLES: Record<string, string> = {
+  road: "Strava's road ride heatmap as it is: where road cyclists ride, brighter where more do.",
+  gravel: "Where gravel riders ride more than road riders: Strava's gravel heat minus its road heat, pixel by pixel. A road everyone rides cancels out.",
+  offroad: "Where gravel and MTB riders together ride more than road riders, where gravel alone is too weak to show. Mostly trails and forest tracks.",
+};
 
 /** Per-viewer choices; storage can be missing or throw, and then defaults apply. */
 interface Saved {
@@ -36,7 +41,8 @@ interface Saved {
 }
 const KEY = "nyvei.layers";
 function load(): Saved {
-  const d: Saved = { basemap: "positron", heatOpacity: 0.8, off: [], edgeHeat: false };
+  // Road heat covers nearly every road, so it starts hidden.
+  const d: Saved = { basemap: "positron", heatOpacity: 0.8, off: ["road"], edgeHeat: false };
   try {
     return { ...d, ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Saved>) };
   } catch {
@@ -114,7 +120,7 @@ export async function setupMapSection(map: maplibregl.Map, below: string, stats:
       type: "raster",
       tileSize: 512,
       minzoom: meta.minzoom,
-      maxzoom: meta.maxzoom,
+      maxzoom: meta.layerMaxzoom?.[layer] ?? meta.maxzoom,
       bounds: meta.bbox,
       tiles: [`${base}${layer}/{z}/{x}/{y}.png`],
       attribution: "Heat © Strava",
@@ -152,6 +158,7 @@ export async function setupMapSection(map: maplibregl.Map, below: string, stats:
       input.checked = !saved.off.includes(layer);
       label.querySelector("i")!.style.setProperty("--c", meta.colors[layer] ?? "#888");
       label.querySelector("span")!.textContent = LABELS[layer] ?? layer;
+      if (TITLES[layer]) label.title = TITLES[layer];
       input.addEventListener("change", () => {
         map.setLayoutProperty(`heat-${layer}`, "visibility", input.checked ? "visible" : "none");
         saved.off = input.checked ? saved.off.filter((l) => l !== layer) : [...saved.off, layer];

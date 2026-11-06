@@ -1,12 +1,14 @@
-// pnpm heat:tiles [--zoom N]: turn the raw Strava layers into gravelheater's
-// two overlays under cache/heat/tiles/, each with a pyramid down to HEAT.minZoom,
-// plus meta.json for the site. Strava normalises each layer on its own, so a
-// road every group uses reads about equal in all of them and cancels:
+// pnpm heat:tiles [--zoom N]: turn the raw Strava layers into three overlays
+// under cache/heat/tiles/, each with a pyramid down to HEAT.minZoom, plus
+// meta.json for the site. Road is the Ride layer as it is. The other two are
+// gravelheater's: Strava normalises each layer on its own, so a road every
+// group uses reads about equal in all of them and cancels:
 //   gravel:  gravel − road           = actual gravel
 //   offroad: (mtb + gravel) − road   = off-road of any kind, where gravel alone is too weak
-// Both are masked where the driving layer is below minSignal (one lone ride);
+// All are masked where the driving layer is below minSignal (one lone ride);
 // the formulas are gravelScore and offroadScore in lib/heat.ts. A pixel lands
-// in gravel if that branch fires, else in offroad if that one does.
+// in gravel if that branch fires, else in offroad if that one does. Road stops
+// at HEAT.roadMaxZoom (meta.json layerMaxzoom) to keep a deploy's file count down.
 // The tiles are derived Strava data: web/vite.config.ts only copies them into
 // a build with PUBLISH_HEAT=1 (see PLAN.md, heat).
 
@@ -16,7 +18,8 @@ import { PNG } from "pngjs";
 import { HEAT, HEAT_PATHS } from "./config";
 import { gravelScore, offroadScore, rawTilePath, readRaw, tilesInBbox, zoomArg } from "./lib/heat";
 
-const LAYERS = ["gravel", "offroad"] as const;
+// Road first, so it draws under the other two on the map.
+const LAYERS = ["road", "gravel", "offroad"] as const;
 type Layer = (typeof LAYERS)[number];
 const SIZE = HEAT.size;
 
@@ -85,18 +88,22 @@ function main(): void {
   const z = zoomArg(process.argv.slice(2));
   const tiles = tilesInBbox(HEAT.bbox, z);
   rmSync(HEAT_PATHS.tiles, { recursive: true, force: true }); // stale tiles would leak into the pyramid
-  const written: Record<Layer, { x: number; y: number }[]> = { gravel: [], offroad: [] };
+  const written: Record<Layer, { x: number; y: number }[]> = { road: [], gravel: [], offroad: [] };
   let raw = 0;
   for (const { x, y } of tiles) {
     const [gravel, road, mtb] = ["gravel", "road", "mtb"].map((l) => readRaw(rawTilePath(l, z, x, y)));
     if (gravel || road || mtb) raw++;
-    if (!gravel && !mtb) continue;
-    const score = { gravel: new Float32Array(SIZE * SIZE), offroad: new Float32Array(SIZE * SIZE) };
-    const any = { gravel: false, offroad: false };
+    if (!gravel && !road && !mtb) continue;
+    const score = { road: new Float32Array(SIZE * SIZE), gravel: new Float32Array(SIZE * SIZE), offroad: new Float32Array(SIZE * SIZE) };
+    const any = { road: false, gravel: false, offroad: false };
     for (let i = 0; i < SIZE * SIZE; i++) {
       const g = gravel ? gravel[i]! / 255 : 0;
       const r = road ? road[i]! / 255 : 0;
       const m = mtb ? mtb[i]! / 255 : 0;
+      if (r >= HEAT.minSignal) {
+        score.road[i] = r;
+        any.road = true;
+      }
       const gs = gravelScore(g, r);
       const os = gs ? 0 : offroadScore(g, m, r);
       if (gs) {
@@ -118,11 +125,18 @@ function main(): void {
     console.log(`${layer}: ${written[layer].length} tiles at z${z}`);
     buildPyramid(layer, z, written[layer]);
   }
+  // Road covers nearly every road, so its deepest levels are dropped; the map stretches the last one.
+  const layerMaxzoom: Record<string, number> = {};
+  if (z > HEAT.roadMaxZoom) {
+    for (let dz = z; dz > HEAT.roadMaxZoom; dz--) rmSync(`${HEAT_PATHS.tiles}/road/${dz}`, { recursive: true, force: true });
+    layerMaxzoom.road = HEAT.roadMaxZoom;
+  }
   const meta = {
     generated: new Date().toISOString(),
     bbox: HEAT.bbox,
     minzoom: HEAT.minZoom,
     maxzoom: z,
+    layerMaxzoom,
     layers: LAYERS.filter((l) => written[l].length),
     colors: Object.fromEntries(LAYERS.map((l) => [l, `rgb(${HEAT.colors[l]!.join(", ")})`])),
   };

@@ -145,7 +145,13 @@ export const HEAT = {
   /** Display curve: any pixel with signal gets at least alphaFloor, the rest is lifted by alphaGamma (< 1 lifts). */
   alphaFloor: 0.35,
   alphaGamma: 0.5,
-  colors: { gravel: [250, 176, 5], offroad: [21, 170, 191] } as Record<string, [number, number, number]>,
+  colors: { road: [194, 37, 92], gravel: [250, 176, 5], offroad: [21, 170, 191] } as Record<string, [number, number, number]>,
+  /**
+   * Deepest zoom of the road overlay. It has signal in about 8900 z15 tiles,
+   * which with its pyramid would bring a deploy near Cloudflare Pages' 20000
+   * file limit; z14 (about 4.8 m/px) keeps it near 8000.
+   */
+  roadMaxZoom: 14,
   /** Edge heat: a sample reads the brightest pixel within ± this many px (about ±5 m at zoom 15). */
   windowPx: 2,
   sampleM: 10,

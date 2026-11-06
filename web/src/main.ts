@@ -198,7 +198,11 @@ function showEdge(e: maplibregl.MapMouseEvent): void {
     ["Length", `${p[P.length]} m`],
     ["First ridden", first ? `${first}${ride ? ` · ${ride.name}` : ""}` : "not yet"],
   ];
-  if (stats.heat) rows.push(["Bike heat", `${(p[P.heat] as number | undefined) ?? 0} / 100`]);
+  if (stats.heat) {
+    const h = (k: string) => (p[k] as number | undefined) ?? 0;
+    rows.push(["Bike heat", `${h(P.heat)} / 100, busiest of Strava's road, gravel and MTB layers`]);
+    rows.push(["Road · gravel · off-road", `${h(P.roadHeat)} · ${h(P.gravelHeat)} · ${h(P.offroadHeat)}`]);
+  }
   const title = document.createElement("strong");
   title.textContent = (p[P.name] as string | undefined) ?? "Unnamed";
   div.append(title);

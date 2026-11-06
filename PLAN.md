@@ -43,8 +43,9 @@ project is merged in here.
   by choice, knowing that ride ends still ring the block around it.
 - **Strava heatmap, merged in from gravelheater.** The global heatmap
   (sport layers Ride, GravelRide, MountainBikeRide) does two jobs. As
-  gravelheater's overlays, *gravel* (gravel − road) and *offroad* (mtb +
-  gravel − road), raster tiles on the map. And as heat per edge, 0..100:
+  overlays, raster tiles on the map: *road* (the Ride layer as it is) and
+  gravelheater's *gravel* (gravel − road) and *offroad* (mtb + gravel −
+  road). And as heat per edge, 0..100:
   *bike heat* `t` for the map, and road, gravel and off-road heat (`tr`,
   `tg`, `to`), one of which the route builder prefers so loops stay on
   roads people ride, so a loop does not pick a road just because it is unridden. Tiles
@@ -137,7 +138,11 @@ gravelheater's compute step: per pixel, gravel = (g − r) × min(1, g /
 (r + 0.05)) where g ≥ 0.08 and g > r, else offroad = g + m − r where
 g + m ≥ 0.08 and > r; a pyramid of max-pooled parents down to zoom 9.
 Overlays draw gold (gravel) and cyan (offroad), off the colours nyvei
-already uses. `pnpm match` gives each edge its heat: every 10 m sample
+already uses, and raspberry (road, r ≥ 0.08, the busy end of the edge
+heat ramp). Road has signal in nearly every tile, so its z15 level is
+dropped and z14 is stretched (`layerMaxzoom` in meta.json): with it a
+deploy would near Cloudflare Pages' 20000 files, without it about 8000.
+Road starts hidden. `pnpm match` gives each edge its heat: every 10 m sample
 reads the brightest pixel of each layer within ±2 px, the end samples
 are dropped because the junction carries the joining road's heat, and
 each heat is a mean over the samples. `t` is the brightest of the three
@@ -157,10 +162,13 @@ are a raster layer under everything, chosen in the panel.
 so loops prefer roads but may use a track to reach one, × (1 − k × heat)
 with heat = `tr`, `tg` or `to` / 100 as the panel's road, gravel or
 off-road choice says, and k the "prefer bike heat" slider (0 to 0.9,
-default 0.6), so with k = 0.6 the busiest road costs 0.4 of a dead one. "Roads only"
+default 0.8), so with k = 0.8 the busiest road costs 0.2 of a dead one.
+From k = 0.75 the busiest ridden road (4 × (1 − k)) costs no more than a
+dead unridden one, so the default leans towards riding busy roads again
+over unridden roads nobody rides; the owner chose that. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
 countable edges, because many bonus ways are hard going on a bike.
-"Avoid hike-a-bike" does the same only for bonus edges with both ends in
+"Avoid hike-a-bike" (on by default) does the same only for bonus edges with both ends in
 the heat bbox (`heat.bbox` in stats.json) and no `t`: a track or path no
 cyclist on Strava rides is the broadest sign of one you push the bike
 on. It is a blunt cut (5237 of 8862 bonus km in the box have no `t`, a
@@ -245,7 +253,7 @@ Each phase ends on a checkable criterion.
   and nightly. Each run replaces a local heat deploy with edges without
   `t` and no overlays.
 - Heat calibration: whether heat ≥ 25 is the right line for "roads
-  cyclists use", whether k = 0.6 is the right default, and whether the
+  cyclists use", whether k = 0.8 is the right default, and whether the
   95th percentile is the right scale for gravel and off-road. From
   Sandnes at k = 0.6, gravel took a 40 km loop from 8 % to 26 % on
   gravel heat ≥ 25 and off-road from 33 % to 59 %, but there is little

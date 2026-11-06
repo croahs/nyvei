@@ -1,8 +1,7 @@
 # nyvei
 
-Which roads around Sandnes have
-I ridden, which have I not, and loops that take me through the ones I have
-not. Static site, no backend, no accounts.
+Which roads around Sandnes have I ridden, which have I not, and loops that
+take me through the ones I have not. Static site, no backend, no accounts.
 
 ## How it works
 
