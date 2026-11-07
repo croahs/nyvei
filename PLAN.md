@@ -186,8 +186,8 @@ unridden. "Roads only"
 sets bonus edges to infinite cost and snaps the start to a component of
 countable edges, because many bonus ways are hard going on a bike.
 "Skip where no one rides" (on by default) does the same for every edge,
-roads included, with both ends in the heat bbox (`heat.bbox` in
-stats.json) and heat 0 in the chosen mode: the owner treats the road
+roads included, with both ends in the heat bbox (`bbox` in the heat
+project's meta.json) and heat 0 in the chosen mode: the owner treats the road
 heatmap as the judge of what is worth riding. Residential and living
 streets are exempt, because the owner means to ride every street: of
 the 631 unridden countable km in the box with no road heat, the 222 km
@@ -289,6 +289,17 @@ Each phase ends on a checkable criterion.
   Sandnes at k = 0.6, gravel took a 40 km loop from 8 % to 26 % on
   gravel heat ≥ 25 and off-road from 33 % to 59 %, but there is little
   gravel within reach there.
+- Loop with a sweep at its target: a ride with one goal at a fair
+  distance and a lot of sweeping. Built by hand once, outside the site:
+  a 28 km loop with a 12 km sweep spliced in at its turnaround gives
+  rounds of about 40 km from home. Two things it showed. Trunk and
+  primary roads need a cost factor of their own (×4 removed them):
+  without it a gravel-mode route from home took 5.5 km of riksvei.
+  And the sweep area's gradient matters more than the loop's, because
+  a sweep climbs every side street: the Ålgård sweep had 43 % of its
+  length at 6 % or steeper (Kartverket DTM, 100 m windows), the Bryne
+  one 4 %. Whether to make this a third mode, and whether gradient
+  should rank the target clusters, is open.
 - Left behind in gravelheater: point-to-point routing through clicked
   waypoints, surface share along a route, elevation profile, GPX import,
   saved routes, place search and the second area (Stellenbosch). Port
