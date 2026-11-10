@@ -61,14 +61,16 @@ jobs:
         run: pnpm match
         env:
           PRIVACY_ZONE: ${{ secrets.PRIVACY_ZONE }}
-      - name: Write new km into the Intervals.icu activities
-        run: pnpm writeback
-        env:
-          INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
-          SITE_URL: ${{ vars.SITE_URL }}
       - run: pnpm build
       - name: Deploy to Cloudflare Pages
         run: pnpm pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Last, as in `pnpm ship` then `pnpm writeback`: a ride that cannot be written (deleted in
+      # Intervals.icu, say) fails the run where it shows, without holding the site back.
+      - name: Write new km into the Intervals.icu activities
+        run: pnpm writeback
+        env:
+          INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY }}
+          SITE_URL: ${{ vars.SITE_URL }}

@@ -81,10 +81,10 @@ export interface Graph {
   /** Geometry of edge e is coords[2 * coordStart[e] .. 2 * coordStart[e + 1]], from a to b. */
   coordStart: Int32Array;
   coords: Float64Array;
-  /** Built on first use: costs per options, usable edges and their components per options, clusters per mode. */
+  /** Built on first use: costs per options, usable edges, their components and their clusters per options. */
   costs: Map<string, Float64Array>;
   views: Map<string, View>;
-  clusterSets: Map<HeatMode, Clusters>;
+  clusterSets: Map<string, Clusters>;
 }
 
 interface Components {
@@ -99,7 +99,7 @@ interface View {
   comp: Components;
 }
 
-/** Connected components of the destination edges of a mode: cluster per edge, -1 for the rest. */
+/** Connected components of the destination edges a route may use: cluster per edge, -1 for the rest. */
 interface Clusters {
   edge: Int32Array;
   count: number;
@@ -229,9 +229,12 @@ const isTarget = (f: number, mode: HeatMode) => !(f & RIDDEN) && ((f & COUNTABLE
 const isDead = (g: Graph, mode: HeatMode, e: number) =>
   (g.edgeFlags[e]! & (IN_HEAT | STREET)) === IN_HEAT && g.edgeHeat[mode][e] === 0;
 
+/** What decides which edges a route may use: the key of its view and of its clusters. */
+const viewKey = (g: Graph, o: LoopOptions) => `${o.heatMode}|${o.roadsOnly}|${o.skipDead && g.hasDead}`;
+
 function view(g: Graph, o: LoopOptions): View {
   const skipDead = o.skipDead && g.hasDead;
-  const key = `${o.heatMode}|${o.roadsOnly}|${skipDead}`;
+  const key = viewKey(g, o);
   let v = g.views.get(key);
   if (v) return v;
   const usable = new Uint8Array(g.edges);
@@ -262,10 +265,16 @@ function edgeCosts(g: Graph, o: LoopOptions, k: number): Float64Array {
   return cost;
 }
 
-function clusters(g: Graph, mode: HeatMode): Clusters {
-  let c = g.clusterSets.get(mode);
+/**
+ * Clusters of unridden destination edges, among the edges the route may use: one that is left out
+ * (a road no one rides, a track under "roads only") is nothing to head for, and joins no cluster.
+ */
+function clusters(g: Graph, o: LoopOptions): Clusters {
+  const key = viewKey(g, o);
+  let c = g.clusterSets.get(key);
   if (c) return c;
-  const target = (e: number) => isTarget(g.edgeFlags[e]!, mode);
+  const { usable } = view(g, o);
+  const target = (e: number) => usable[e] === 1 && isTarget(g.edgeFlags[e]!, o.heatMode);
   const root = unionFind(g.nodes, g.edges, g.edgeA, g.edgeB, target);
   const edge = new Int32Array(g.edges).fill(-1);
   const ids = new Map<number, number>();
@@ -277,7 +286,7 @@ function clusters(g: Graph, mode: HeatMode): Clusters {
     edge[e] = id;
   }
   c = { edge, count: ids.size };
-  g.clusterSets.set(mode, c);
+  g.clusterSets.set(key, c);
   return c;
 }
 
@@ -510,7 +519,7 @@ export function makeLoop(g: Graph, start: LonLat, o: LoopOptions): Loop {
   const D = o.km * 1000;
   const reach = D / 2;
   const { k, heat, cost: baseCost, comp } = setup(g, o);
-  const cl = clusters(g, o.heatMode);
+  const cl = clusters(g, o);
   const s = snap(g, comp, start, D);
 
   // Out: cheapest paths from the start, cut at D/2.

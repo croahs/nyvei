@@ -207,7 +207,9 @@ MapLibre's parsed copy, because structured cloning 400k features blocks
 the page for seconds. Given start and target distance D: Dijkstra from
 the start, cut at D/2 of path length; clusters are connected components
 of unridden destination edges (countable, plus the busy tracks above in
-gravel and off-road mode), ranked by their km inside that
+gravel and off-road mode) that the route may use (an edge left out by
+"roads only" or "skip where no one rides" is nothing to head for),
+ranked by their km inside that
 reach (weighted by (1 − k + k × heat), so a busy cluster outranks a
 dead one), counting only clusters that reach at least 0.35 D out (a cluster
 next to the start cannot turn a loop of length D). In the chosen cluster

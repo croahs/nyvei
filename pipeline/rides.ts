@@ -77,11 +77,24 @@ function classify(a: Activity): ManifestEntry {
   return entry;
 }
 
-/** Writes the GPX, or marks the entry skipped. A rate limit that outlasts the retries leaves it for the next run. */
+/**
+ * Writes the GPX, or marks the entry skipped. A rate limit that outlasts the retries, a server
+ * error or a network failure leaves it for the next run: a skip is for good, so it takes an
+ * answer that will not change (a 4xx, a file without track points).
+ */
 async function downloadGpx(entry: ManifestEntry): Promise<void> {
   let res: Response;
   for (let attempt = 1; ; attempt++) {
-    res = await fetch(`${INTERVALS_URL}/api/v1/activity/${entry.id}/gpx-file?power=false&hr=false`, { headers });
+    try {
+      res = await fetch(`${INTERVALS_URL}/api/v1/activity/${entry.id}/gpx-file?power=false&hr=false`, { headers });
+    } catch (err) {
+      console.warn(`  ${entry.id}: ${err instanceof Error ? err.message : err}, left for the next run`);
+      return;
+    }
+    if (res.status >= 500) {
+      console.warn(`  ${entry.id}: gpx HTTP ${res.status}, left for the next run`);
+      return;
+    }
     if (res.status !== 429) break;
     if (attempt >= 6) {
       console.warn(`  ${entry.id}: still rate limited after ${attempt} attempts, left for the next run`);
