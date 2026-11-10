@@ -7,7 +7,8 @@
 # CLOUDFLARE_API_TOKEN (Pages edit), CLOUDFLARE_ACCOUNT_ID.
 # Variable: SITE_URL (the published address, for the link in each activity).
 # Caches: ride GPX files and the writeback state accumulate across runs; road
-# data is kept and refreshed from Overpass on the first of each month.
+# data is kept and refreshed from Overpass on the first of each month; elevation
+# tiles (cache/dem) are kept and only grow, as match fetches the ones it lacks.
 
 name: Publish
 
@@ -49,6 +50,12 @@ jobs:
           path: cache/roads
           key: roads-${{ github.run_id }}
           restore-keys: roads-
+      - name: Restore elevation cache
+        uses: actions/cache@v4
+        with:
+          path: cache/dem
+          key: dem-${{ github.run_id }}
+          restore-keys: dem-
 
       - name: Fetch new rides
         run: pnpm rides

@@ -1,6 +1,6 @@
 # nyvei
 
-Which roads around Sandnes have I ridden, which have I not, and loops that
+Which roads around Sandnes have I ridden, which have I not, and routes that
 take me through the ones I have not. Static site, no backend, no accounts.
 
 ## How it works
@@ -14,9 +14,9 @@ take me through the ones I have not. Static site, no backend, no accounts.
    tracks and paths only count as new kilometres on a ride. Rides outside
    Rogaland get their roads fetched on demand.
 4. **site**: a MapLibre map shows ridden and unridden roads, coverage per
-   kommune, and new kilometres per ride.
-5. **route**: pick a start and a distance in the browser, get a loop that
-   prefers unridden roads, download it as GPX.
+   kommune and over time, and new kilometres per ride.
+5. **route**: pick a start in the browser and get a loop, a sweep or a
+   route from A to B that prefers unridden roads, download it as GPX.
 6. **writeback**: each ride's new km goes back into its Intervals.icu
    activity description.
 
@@ -35,7 +35,10 @@ pnpm match   # -> web/public/data/ (edge files per kommune, tracks, stats.json)
 ```
 
 `pnpm match --skip-outside` matches without fetching roads for rides that
-leave the loaded kommuner, for runs with a partial kommune list.
+leave the loaded kommuner, for runs with a partial kommune list. Match
+also gives every road its surface (from OpenStreetMap) and elevations; it
+downloads the elevation tiles it lacks into `cache/dem`, about 100 MB the
+first time.
 
 ## Strava heat (from gravelheater)
 
@@ -71,35 +74,77 @@ pnpm dev     # map at http://localhost:5173
 ```
 
 The map loads each kommune's roads as it comes into view. Hover a road
-for its name, type and first-ridden date; click a ride in the list to see
-its track and the roads it rode first. `pnpm build` writes a static build
+for its name, type, surface and first-ridden date; click a ride in the
+list to see its track and the roads it rode first. The search box finds
+places in Norway, and street addresses when the query has a number
+(Kartverket, no key); a hit can be used as start, via or end of a route.
+**Progress** charts coverage and new km per month. In **Kommuner**,
+"Next %" is the km left to that kommune's next whole percent; click a
+column header to sort by it. **Gaps** lists the short unridden stubs
+between roads already ridden, nearest the map centre first, and
+highlights them on the map while it is open. `pnpm build` writes a static build
 to `web/dist/`, data included; see Publishing for putting it online.
 
 ## Building a route
 
-The Route section in the panel builds loops in the browser; there is no
-routing server. Set a start with **Pick start on map** (then click the
-map) or **Start at map centre**, choose a distance and press
-**Generate**. The loop heads out to the biggest patch of unridden roads
-within half the distance and comes back another way, preferring
-unridden roads and using tracks only to reach them. The panel shows the
-loop's length, its unridden road and track km, and the share of the loop
-on unridden roads. **Prefer bike heat** (shown once edges have heat) pulls the loop
-onto roads other cyclists ride, by *road* heat (the Ride layer), or by
-*gravel* (gravel − road, the gold overlay) or *off-road* (gravel + mtb −
-road, the cyan overlay) with road heat at half weight, and in those two
-modes busy gravel or off-road tracks count as roads to head for; the
-panel shows how much of the loop is on them. **Skip where no one rides**
-keeps it off every road, track and path in the heat area with no heat,
-except residential streets, which stay in so every street gets ridden
-in the end.
-**Try another** picks a different patch, in another direction where
-there is one. **Sweep** instead rides every unridden road it can reach
-from the start, nearest first and dead ends included, and comes home
-when the distance is used up: a short easy spin that ticks off the
-streets around home. **Download GPX** saves the route as a GPX 1.1
-track. The route graph builds in the background while the map loads,
-in a few seconds.
+The Route section in the panel builds routes in the browser; there is no
+routing server. Set a start (**Pick on map**, **Map centre** or **My
+position**), choose a mode and press **Generate**:
+
+- **Loop** heads out to the biggest patch of unridden roads within half
+  the distance and comes back another way, preferring unridden roads and
+  using tracks only to reach them.
+- **Sweep** rides every unridden road it can reach from the start,
+  nearest first and dead ends included, and comes home when the distance
+  is used up: a short easy spin that ticks off the streets around home.
+- **Loop + sweep** rides out to a patch like a loop, sweeps there with
+  what is left of the distance, and comes home another way.
+- **A to B** goes from the start through any number of via points to an
+  end. Without an end it comes back to the start, a round trip through
+  the vias. Points are set by clicking the map and can be dragged; the
+  distance field does not apply.
+
+**Try another** gives a different patch for a loop and a loop + sweep,
+and a different way for A to B. The panel shows the route's length, its
+unridden road and track km, climb and steep km, km by surface and on
+main roads, and an elevation profile; hover the profile to see the spot
+on the map. **Download GPX** saves the route as a GPX 1.1 track, named
+for what it is.
+
+The switches under **Options** are remembered in the browser:
+
+- **Avoid main roads** (on by default) makes riksvei and the larger
+  fylkesvei (OSM trunk and primary) four times as costly and nothing to
+  head for.
+- **Roads only** keeps the route off tracks and paths. **Paved only**
+  also leaves out roads tagged unpaved.
+- **Avoid steep** makes stretches of 6 % or more costly and ranks flatter
+  patches first.
+- **Skip where no one rides** keeps it off every road, track and path in
+  the heat area with no heat, except residential streets, which stay in
+  so every street gets ridden in the end.
+- **Prefer bike heat** (shown once edges have heat) pulls the route onto
+  roads other cyclists ride, by *road* heat (the Ride layer), or by
+  *gravel* (gravel − road, the gold overlay) or *off-road* (gravel + mtb −
+  road, the cyan overlay) with road heat at half weight, and in those two
+  modes busy gravel or off-road tracks count as roads to head for; the
+  panel shows how much of the route is on them.
+- **Only gaps** (sweep) rides only the gaps: unridden stubs of at most
+  500 m between roads already ridden.
+
+The address bar holds the route (`route`, `start`, `via`, `end`, `km`,
+`opts`, `prefer`, `try`), so the link reopens the same route on another
+device, as long as the data has not changed since. The route graph builds
+in the background while the map loads, in a few seconds.
+
+### Not rideable
+
+A road that turns out to be private, gated or overgrown: click it and
+press **Not rideable**. No route uses it again, and it is drawn in black
+dashes. The mark lives in that browser. To make it permanent and shared,
+press **Copy as JSON** in the Not rideable section, paste the list into
+`web/public/blocked.json` and commit; it is published with the site.
+Marked roads still count in the coverage percent.
 
 ## Publishing
 
@@ -139,12 +184,13 @@ The `Publish` workflow (`.github/workflows/publish.yml`) does the same
 nightly, on every push to `main`, and on demand from the Actions tab. It
 needs five repository secrets: `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`,
 `PRIVACY_ZONE`, `CLOUDFLARE_API_TOKEN` (a token with Cloudflare Pages
-edit) and `CLOUDFLARE_ACCOUNT_ID`. Ride GPX files and road data are kept
-in the Actions cache between runs; roads are refreshed from Overpass on
-the first of the month.
+edit) and `CLOUDFLARE_ACCOUNT_ID`. Ride GPX files, road data and elevation
+tiles are kept in the Actions cache between runs; roads are refreshed from
+Overpass on the first of the month.
 
 ## Status
 
 Phases 1 (pipeline), 2 (map), 4 (publishing) and 5 (heat from
 gravelheater) done; phase 3 (route builder) done except loading a GPX on
-the Garmin, which is still to be checked.
+the Garmin, which is still to be checked; phase 6 (more routes and
+progress) built and checked locally, not yet published.

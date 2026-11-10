@@ -13,6 +13,10 @@
         <h1>nyvei</h1>
         <span id="status" class="muted">Loading…</span>
       </header>
+      <div class="search">
+        <input id="search" type="search" placeholder="Find a place or address" autocomplete="off" title="Place names and street addresses in Norway, from Kartverket. Pick a result to fly there and use it as the route's start, a via point or the end." />
+        <ul id="search-results" class="list" hidden></ul>
+      </div>
       <section id="total"></section>
       <ul class="legend">
         <li><i style="--c: #e8590c"></i>Ridden road</li>
@@ -41,27 +45,76 @@
       </section>
       <details id="route" open>
         <summary>Route</summary>
-        <div class="route-row">
-          <button id="route-pick" type="button">Pick start on map</button>
-          <button id="route-centre" type="button">Start at map centre</button>
+        <div id="route-mode" class="seg" role="group" aria-label="Route mode">
+          <button type="button" data-mode="loop" title="A loop out to the best patch of unridden roads in reach and back another way">Loop</button>
+          <button type="button" data-mode="sweep" title="Ride every unridden road you can reach, nearest first, dead ends included, and head home when the distance is used up. Good for a short easy spin around home.">Sweep</button>
+          <button type="button" data-mode="loopsweep" title="A loop out to a patch of unridden roads with about 70 % of the distance, a sweep of the streets there with the rest, and home another way">Loop + sweep</button>
+          <button type="button" data-mode="ab" title="From the start through the via points, in order, to the end, preferring unridden roads by the same rules. Without an end it comes back to the start.">A to B</button>
         </div>
-        <div id="route-start" class="muted">No start yet</div>
         <div class="route-row">
-          <label>Distance <input id="route-km" type="number" min="5" max="300" step="5" value="40" /> km</label>
-          <label title="Keep the loop off tracks, paths and other bonus ways"><input id="route-roads" type="checkbox" /> Roads only</label>
-          <label id="route-dead-row" hidden title="Leave out every road, track and path in the heat area that no cyclist on Strava rides: no road heat in road mode, no road or gravel (off-road) heat in gravel (off-road) mode. Residential streets always stay in, so every street gets ridden in the end. The heatmap knows where riding is good; about one in eight unridden roads around here has no heat and is not residential."><input id="route-dead" type="checkbox" checked /> Skip where no one rides</label>
-          <label id="route-heat-row" hidden title="How strongly the loop is pulled towards busier roads, by the heat chosen on the right. It always prefers more heat; the percentage is only how much: at 70 % the busiest road costs 30 % of one nobody rides, a road with heat 60 costs 58 %. At 20 % the same are 80 % and 88 %, so a busy road still beats a quiet one, by less. From 75 % up a busy road you have ridden can win over an unridden one nobody rides.">Prefer bike heat <input id="route-heat" type="range" min="0" max="0.9" step="0.1" value="0.7" /> <span id="route-heat-val" class="muted"></span> on <select id="route-heat-mode" title="Which heat pulls the loop. Road: Strava's road ride heatmap. Gravel: gravel − road (the gold overlay) or half the road heat, whichever is higher on each road. Off-road: the same with gravel + mtb − road (the cyan overlay). Popular roads count in every mode, so the busier ones get ticked off first, but a busy gravel track beats a busy asphalt road."><option value="road">road</option><option value="gravel">gravel</option><option value="offroad">off-road</option></select></label>
-          <button id="route-go" type="button" title="A loop out to the best patch of unridden roads in reach and back another way">Generate</button>
-          <button id="route-sweep" type="button" title="Ride every unridden road you can reach, nearest first, dead ends included, and head home when the distance is used up. Good for a short easy spin around home.">Sweep</button>
+          <span class="muted">Start</span>
+          <button id="route-pick" type="button" title="The next click on the map sets the start">Pick on map</button>
+          <button id="route-centre" type="button" title="Start where the map is centred now">Map centre</button>
+          <button id="route-here" type="button" title="Start where this device says you are (asks for your location)">My position</button>
+        </div>
+        <ol id="route-points" class="points"></ol>
+        <div id="route-ab" class="route-row" hidden>
+          <button id="route-add-via" type="button" title="Each click on the map adds a via point, passed in order; press again or Esc to stop. Markers can be dragged.">Add vias on map</button>
+          <button id="route-pick-end" type="button" title="The next click on the map sets the end">Pick end on map</button>
+        </div>
+        <div id="route-ab-note" class="muted" hidden>No end: the route goes through the vias and comes back to the start.</div>
+        <div class="route-row">
+          <label id="route-km-row" title="How long the route should be; it lands within about 5 %">Distance <input id="route-km" type="number" min="5" max="300" step="5" value="40" /> km</label>
+          <button id="route-go" class="primary" type="button" title="Make the route for the mode above from the start">Generate</button>
           <button id="route-next" type="button">Try another</button>
         </div>
+        <details id="route-opts">
+          <summary title="Which roads the route may use and which it prefers. Remembered in this browser.">Options <span id="route-opts-sum" class="muted"></span></summary>
+          <div class="opts">
+            <label title="Trunk and primary roads (riksvei and the busy fylkesveier) cost four times as much and are never what a loop heads for. Off, the route takes them where they are the short way."><input id="route-main" type="checkbox" /> Avoid main roads</label>
+            <label title="Keep the route off tracks, paths and other bonus ways"><input id="route-roads" type="checkbox" /> Roads only</label>
+            <label id="route-paved-row" hidden title="Leave out everything OSM tags as unpaved, and tracks and paths with no surface tag, which here are rarely asphalt. Untagged roads stay in: in Norway they are nearly all asphalt."><input id="route-paved" type="checkbox" /> Paved only</label>
+            <label id="route-steep-row" hidden title="Stretches at 6 % or steeper cost up to four times as much, and a loop prefers patches of unridden road that are less steep. From the elevation of each road."><input id="route-steep" type="checkbox" /> Avoid steep</label>
+            <label id="route-dead-row" hidden title="Leave out every road, track and path in the heat area that no cyclist on Strava rides: no road heat in road mode, no road or gravel (off-road) heat in gravel (off-road) mode. Residential streets always stay in, so every street gets ridden in the end. The heatmap knows where riding is good; about one in eight unridden roads around here has no heat and is not residential."><input id="route-dead" type="checkbox" checked /> Skip where no one rides</label>
+            <label id="route-gaps-row" hidden title="Sweep only the gaps: short unridden stretches, up to 500 m, next to roads you have already ridden (the Gaps section lists them)"><input id="route-gaps" type="checkbox" /> Only gaps</label>
+            <label id="route-heat-row" hidden title="How strongly the route is pulled towards busier roads, by the heat chosen on the right. It always prefers more heat; the percentage is only how much: at 70 % the busiest road costs 30 % of one nobody rides, a road with heat 60 costs 58 %. At 20 % the same are 80 % and 88 %, so a busy road still beats a quiet one, by less. From 75 % up a busy road you have ridden can win over an unridden one nobody rides.">Prefer bike heat <input id="route-heat" type="range" min="0" max="0.9" step="0.1" value="0.7" /> <span id="route-heat-val" class="muted"></span> on <select id="route-heat-mode" title="Which heat pulls the route. Road: Strava's road ride heatmap. Gravel: gravel − road (the gold overlay) or half the road heat, whichever is higher on each road. Off-road: the same with gravel + mtb − road (the cyan overlay). Popular roads count in every mode, so the busier ones get ticked off first, but a busy gravel track beats a busy asphalt road."><option value="road">road</option><option value="gravel">gravel</option><option value="offroad">off-road</option></select></label>
+          </div>
+        </details>
         <div id="route-result"></div>
-        <div class="route-row"><span id="route-status" class="muted">Building route graph…</span><button id="route-gpx" type="button">Download GPX</button></div>
+        <div id="route-profile" class="chart-host" hidden title="Height along the route. Hover or drag across it to see the height there and the spot on the map."></div>
+        <div class="route-row"><span id="route-status" class="muted">Building route graph…</span><button id="route-gpx" type="button" title="Save the route as a GPX 1.1 track for the bike computer">Download GPX</button></div>
+      </details>
+      <details id="blocked-section">
+        <summary title="Roads you marked not rideable. Every route keeps off them; coverage counts them as before.">Not rideable <span id="blocked-count" class="muted"></span></summary>
+        <p class="muted hint">Click a road on the map and press Not rideable. Marks stay in this browser until copied into blocked.json.</p>
+        <ul id="blocked-list" class="list"></ul>
+        <div class="route-row"><span id="blocked-status" class="muted"></span><button id="blocked-copy" type="button" title="Copy every mark, this browser's and blocked.json's, as JSON to paste over web/public/blocked.json, so every browser gets them after the next deploy">Copy as JSON</button></div>
+      </details>
+      <details id="gaps-section">
+        <summary title="Short unridden stretches, up to 500 m, next to roads you have already ridden: the cheapest coverage there is. Counted under the route's options.">Gaps <span id="gaps-total" class="muted"></span></summary>
+        <div id="gaps-status" class="muted hint"></div>
+        <ul id="gaps-list" class="list"></ul>
+      </details>
+      <details id="progress-section">
+        <summary title="Coverage of the countable roads in Rogaland month by month, and the new km each month">Progress</summary>
+        <div id="progress" class="chart-host"></div>
+        <details id="progress-table-wrap">
+          <summary title="The numbers behind the charts">Table</summary>
+          <table id="progress-table">
+            <thead><tr><th>Month</th><th class="num">Covered</th><th class="num" title="New road km that month">Roads</th><th class="num" title="New track and path km that month">Tracks</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </details>
       </details>
       <details open>
         <summary>Kommuner</summary>
         <table id="kommuner">
-          <thead><tr><th>Kommune</th><th class="num">Ridden</th><th class="num">km</th></tr></thead>
+          <thead><tr>
+            <th data-sort="name" tabindex="0" title="Sort by name">Kommune</th>
+            <th data-sort="percent" tabindex="0" class="num" title="Share of countable road km ridden; sort by it">Ridden</th>
+            <th data-sort="km" tabindex="0" class="num" title="Countable km ridden of all; sort by km ridden">km</th>
+            <th data-sort="next" tabindex="0" class="num" title="Km of unridden countable road left to the next whole percent; sort by it to see which kommune is nearest">Next %</th>
+          </tr></thead>
           <tbody></tbody>
         </table>
       </details>

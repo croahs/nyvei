@@ -1,8 +1,9 @@
 import * as maplibregl from "maplibre-gl";
-import type { ExpressionSpecification, LngLatBoundsLike, MapGeoJSONFeature } from "maplibre-gl";
+import type { ExpressionSpecification, MapGeoJSONFeature } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "./style.css";
+import { setupBlocked } from "./blocked";
 import {
   EDGE_HEAT_URL,
   edgeFiles,
@@ -17,8 +18,15 @@ import {
   type RideStats,
   type Stats,
 } from "./data";
+import { setupEdgePopup } from "./edgepopup";
+import { setupGaps } from "./gaps";
+import { setupKommuner } from "./kommuner";
 import { setupMapSection } from "./layers";
+import { setupProgress } from "./progress";
+import { startRouter } from "./router";
 import { setupRoute, type RoutePanel } from "./routepanel";
+import { setupSearch } from "./search";
+import { param, setParams } from "./url";
 
 // MapLibre looks for its worker next to its own module, which Vite's bundling moves.
 maplibregl.setWorkerUrl(workerUrl);
@@ -47,6 +55,8 @@ const GROUPS: Group[] = [
   { id: "road-ridden", filter: ["all", ridden, countable], color: "#e8590c", muted: "#dcc3b5", width: 2.4 },
 ];
 const NEW_GROUP = "new";
+/** Roads marked not rideable, drawn on top of their own colour (blocked.ts). */
+const BLOCKED_GROUP = "blocked";
 const NO_RIDE: ExpressionSpecification = ["==", ["get", P.firstActivity], ""];
 const RIDDEN_COLOR = GROUPS.find((g) => g.id === "road-ridden")!.color;
 
@@ -61,6 +71,7 @@ const map = new maplibregl.Map({
 });
 const mapReady = new Promise((r) => map.once("load", r));
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), "top-left");
 map.addControl(new maplibregl.ScaleControl(), "bottom-left");
 
 let stats: Stats;
@@ -83,6 +94,13 @@ const HEAT_RAMP: ExpressionSpecification = [
 ];
 const groupColor = (g: Group): string | ExpressionSpecification => (edgeHeat && g.heat ? HEAT_RAMP : (selected && g.muted) || g.color);
 
+let blockedFilter: ExpressionSpecification = ["in", ["get", P.id], ["literal", []]];
+function drawBlocked(ids: string[]): void {
+  blockedFilter = ["in", ["get", P.id], ["literal", ids]];
+  for (const k of loaded) map.setFilter(`${BLOCKED_GROUP}-${k}`, blockedFilter);
+}
+const blocked = setupBlocked(map, drawBlocked);
+
 function setEdgeHeat(on: boolean): void {
   edgeHeat = on;
   for (const k of loaded) for (const g of GROUPS) if (g.heat) map.setPaintProperty(`${g.id}-${k}`, "line-color", groupColor(g));
@@ -101,7 +119,7 @@ const interactive = () => [...loaded].flatMap((k) => [...GROUPS.map((g) => `${g.
 
 function setupLayers(): void {
   map.addSource("anchors", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-  for (const g of [...GROUPS.map((g) => g.id), NEW_GROUP]) map.addLayer({ id: `anchor-${g}`, type: "line", source: "anchors" });
+  for (const g of [...GROUPS.map((g) => g.id), NEW_GROUP, BLOCKED_GROUP]) map.addLayer({ id: `anchor-${g}`, type: "line", source: "anchors" });
   map.addSource("track", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addLayer(
     // A selected ride's own track in ridden orange over the muted network; its new edges draw green on top.
@@ -159,6 +177,18 @@ function addFile(f: EdgeFile): void {
     },
     `anchor-${NEW_GROUP}`,
   );
+  // Not rideable: short black dashes, a look no other layer uses, like a barrier on a paper map.
+  map.addLayer(
+    {
+      id: `${BLOCKED_GROUP}-${f.key}`,
+      type: "line",
+      source,
+      filter: blockedFilter,
+      layout: { "line-cap": "butt", "line-join": "round" },
+      paint: { "line-color": "#1f2328", "line-width": width(3), "line-dasharray": [1, 0.8] },
+    },
+    `anchor-${BLOCKED_GROUP}`,
+  );
 }
 
 function intersects(a: BBox, b: BBox): boolean {
@@ -189,9 +219,6 @@ map.on("sourcedata", (e: maplibregl.MapSourceDataEvent) => {
   updateStatus();
 });
 
-// Hover (and tap) shows the edge under the pointer.
-const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px", offset: 8 });
-
 function edgeAt(point: maplibregl.Point): MapGeoJSONFeature | undefined {
   const layers = interactive().filter((id) => map.getLayer(id));
   if (!layers.length) return undefined;
@@ -201,49 +228,10 @@ function edgeAt(point: maplibregl.Point): MapGeoJSONFeature | undefined {
   ];
   return map.queryRenderedFeatures(box, { layers })[0];
 }
-
-function showEdge(e: maplibregl.MapMouseEvent): void {
-  if (route?.picking) {
-    popup.remove();
-    return;
-  }
-  const f = edgeAt(e.point);
-  map.getCanvas().style.cursor = f ? "pointer" : "";
-  if (!f) {
-    popup.remove();
-    return;
-  }
-  const p = f.properties;
-  const first = p[P.firstDate] as string | undefined;
-  const ride = first ? stats.rides.find((r) => r.id === p[P.firstActivity]) : undefined;
-  const div = document.createElement("div");
-  div.className = "edge-popup";
-  const rows: [string, string][] = [
-    ["Highway", String(p[P.highway])],
-    ["Tier", p[P.countable] === 1 ? "countable" : "bonus"],
-    ["Length", `${p[P.length]} m`],
-    ["First ridden", first ? `${first}${ride ? ` · ${ride.name}` : ""}` : "not yet"],
-  ];
-  if (heat) {
-    const [t, tr, tg, to] = heat[f.source.slice("edges-".length)]?.[p[P.id] as string] ?? [0, 0, 0, 0];
-    rows.push(["Bike heat", `${t} / 100, busiest of Strava's road, gravel and MTB layers`]);
-    rows.push(["Road · gravel · off-road", `${tr} · ${tg} · ${to}`]);
-  }
-  const title = document.createElement("strong");
-  title.textContent = (p[P.name] as string | undefined) ?? "Unnamed";
-  div.append(title);
-  for (const [k, v] of rows) {
-    const row = document.createElement("div");
-    row.innerHTML = `<span></span> <span></span>`;
-    row.children[0]!.textContent = k;
-    row.children[1]!.textContent = v;
-    div.append(row);
-  }
-  popup.setLngLat(e.lngLat).setDOMContent(div).addTo(map);
-}
-map.on("mousemove", showEdge);
-map.on("click", showEdge);
-map.getCanvas().addEventListener("mouseleave", () => popup.remove());
+// Registered before the route panel's own click handler, so it still sees a point being picked.
+setupEdgePopup(map, { edgeAt, stats: () => stats, heat: () => heat, picking: () => !!route?.picking, blocked });
+// The search flies the map from the start; its points wait for the route panel.
+setupSearch(map, (kind, at, label) => route?.setPoint(kind, { at, label }));
 
 // Panel.
 function renderTotals(): void {
@@ -254,23 +242,6 @@ function renderTotals(): void {
     <div class="muted">Bonus ${km(t.bonus_ridden_km)} of ${km(t.bonus_km)} km · outside Rogaland ${km(
       t.outside_ridden_km.countable + t.outside_ridden_km.bonus,
     )} km</div>`;
-}
-
-function renderKommuner(): void {
-  const rows = Object.entries(stats.kommuner).sort((a, b) => b[1].percent - a[1].percent || a[1].name.localeCompare(b[1].name));
-  const body = $("#kommuner tbody");
-  body.replaceChildren(
-    ...rows.map(([, k]) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td></td><td class="num"></td><td class="num muted"></td>`;
-      tr.children[0]!.textContent = k.name;
-      tr.children[1]!.textContent = `${km(k.percent)} %`;
-      tr.children[2]!.textContent = `${km(k.countable_ridden_km)} / ${km(k.countable_km)}`;
-      tr.style.setProperty("--pct", `${k.percent}%`);
-      if (k.bbox) tr.addEventListener("click", () => map.fitBounds(k.bbox as LngLatBoundsLike, { padding: 30 }));
-      return tr;
-    }),
-  );
 }
 
 function renderRides(): void {
@@ -291,10 +262,10 @@ function renderRides(): void {
 }
 
 // The selected ride lives in the URL as ?ride=<id>, so a link (for one from the
-// Intervals.icu description) opens the site on that ride.
+// Intervals.icu description) opens the site on that ride. The route's parameters stay beside it.
 async function selectRide(r: RideStats | null): Promise<void> {
   selected = r?.id ?? null;
-  history.replaceState(null, "", r ? `?ride=${r.id}` : location.pathname);
+  setParams({ ride: r ? r.id : null });
   rideFilter = r ? ["==", ["get", P.firstActivity], r.id] : NO_RIDE;
   for (const k of loaded) {
     map.setFilter(`${NEW_GROUP}-${k}`, rideFilter);
@@ -325,6 +296,22 @@ async function selectRide(r: RideStats | null): Promise<void> {
 }
 $("#ride-clear").addEventListener("click", () => void selectRide(null));
 
+/** The credit Mapzen's terrain tiles ask for, on the map's attribution once edges carry elevations. */
+function creditElevation(): void {
+  map.addSource("elevation-credit", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+    attribution:
+      // Short, since a phone shows the attribution over the map; the link lists every source.
+      '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md">Elevation: Mapzen terrain tiles, © Kartverket and others</a>',
+  });
+  // MapLibre credits only sources a layer uses, so an empty layer carries it.
+  map.addLayer({ id: "elevation-credit", type: "line", source: "elevation-credit" });
+  // On a phone the open attribution now covers a fifth of the map until the first drag; start it
+  // folded behind its (i) button, which MapLibre's compact mode is for.
+  if (matchMedia("(max-width: 700px)").matches) document.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+}
+
 async function start(): Promise<void> {
   try {
     stats = await loadStats();
@@ -336,7 +323,8 @@ async function start(): Promise<void> {
   // Heat loads alongside the roads; the map and router take it once it is here.
   const heatLoad = Promise.all([loadHeatMeta(), loadEdgeHeat()]);
   renderTotals();
-  renderKommuner();
+  setupKommuner(map, stats);
+  setupProgress(stats);
   renderRides();
   $("#generated").textContent = `Data from ${stats.generated.slice(0, 16).replace("T", " ")}`;
   await mapReady;
@@ -347,9 +335,23 @@ async function start(): Promise<void> {
   heat = edges;
   for (const k of loaded) applyHeat(k);
   setupMapSection(map, `anchor-${GROUPS[0]!.id}`, meta, !!heat, setEdgeHeat);
-  route = setupRoute(map, files, meta?.bbox, heat ? EDGE_HEAT_URL : undefined);
-  const wanted = new URLSearchParams(location.search).get("ride");
-  const ride = stats.rides.find((r) => r.id === wanted);
+  const router = startRouter(files, {
+    heatUrl: heat ? EDGE_HEAT_URL : undefined,
+    heatBBox: meta?.bbox,
+    blocked: blocked.ids(),
+    onProgress: (done, of) => ($("#route-status").textContent = `Building route graph, ${done} of ${of} files…`),
+  });
+  blocked.attach(router);
+  const panel = setupRoute(map, router);
+  route = panel;
+
+  const gaps = setupGaps(map, router, `anchor-${GROUPS[0]!.id}`, panel.edgeOptions);
+  panel.onOptionsChange(gaps.refresh);
+  blocked.onChange(gaps.refresh);
+  void router.ready.then((r) => {
+    if (r.hasElev) creditElevation();
+  }, () => undefined);
+  const ride = stats.rides.find((r) => r.id === param("ride"));
   if (ride) void selectRide(ride);
 }
 

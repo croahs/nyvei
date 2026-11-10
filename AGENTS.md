@@ -13,10 +13,12 @@ when a decision lands; never append a contradicting section.
   `INTERVALS_API_KEY`. Never commit it, never print it.
 - `cache/` is derived and gitignored. Everything in it must be
   reproducible from `pnpm rides`, `pnpm roads` and `pnpm heat` (then
-  `pnpm heat:tiles`).
+  `pnpm heat:tiles`); `pnpm match` fetches the elevation tiles in
+  `cache/dem` itself.
 - Ridden-road data reveals where the owner lives. Nothing under
   `web/public/data/` is published anywhere without the privacy zone from
-  PLAN.md phase 4.
+  PLAN.md phase 4. A new per-edge value or statistic is a new thing
+  published: check it against the zone before it ships.
 - Strava heat tiles are derived Strava data for personal use. They live in
   `cache/heat` on the owner's machine and on the `heat` branch of the
   Pages project, which only the owner deploys (`pnpm heat:pages`) and

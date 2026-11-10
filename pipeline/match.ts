@@ -1,6 +1,6 @@
 // pnpm match [slug ...] [--skip-outside] [--no-zone]: match every cached ride
 // against the road edges and write the site's data under web/public/data/: one
-// edge file per kommune, outside.json, one track per ride and stats.json.
+// edge file per kommune and per outside ride box, one track per ride and stats.json.
 //
 // Published data never points at home: PRIVACY_ZONE (lat,lon,radius_m, from
 // .env or the environment) drops every edge with a point inside the circle
@@ -26,6 +26,9 @@
 //   l  length in metres                  d  first ridden date, absent when unridden
 //   r  first activity id, absent when unridden
 //   p  1 when the first ride counted the edge as new km (primary), else absent
+//   s  surface, "p" paved or "u" unpaved (config SURFACE), absent when unknown
+//   z  elevations in whole metres at max(2, ceil(l / 50) + 1) evenly spaced
+//      points from a to b, absent when the DEM could not be read (lib/dem.ts)
 // The kommune is the file name; outside files are numbered like the ride boxes
 // in stats.json. Files stay under 25 MB, Cloudflare Pages' limit per file.
 // web/src/data.ts mirrors this mapping.
@@ -36,10 +39,16 @@
 // [t, tr, tg, to], each 0..100. t is the brightest sport layer; tr road (Ride
 // layer), tg gravel and to off-road are each scaled so their 95th percentile over
 // heated edges is 100 (lib/heat.ts, heatScale). Edges with no heat are left out.
+//
+// Elevation comes from Terrarium tiles in cache/dem; match fetches the ones the
+// published edges touch and lacks. A tile that fails leaves `z` off its edges.
+// Edges in the privacy zone get neither heat nor elevation, since they are not
+// published.
 
 import { readFileSync, rmSync } from "node:fs";
 import Flatbush from "flatbush";
-import { HEAT_PATHS, KOMMUNER, MATCH, PATHS, type Tier } from "./config";
+import { DEM, HEAT_PATHS, KOMMUNER, MATCH, PATHS, SURFACE, type Tier } from "./config";
+import { DemSampler, fetchTiles, isStructure, profilePoints, tilesFor } from "./lib/dem";
 import { kmByTier, splitWays, type Edge, type SourcedWay } from "./lib/edges";
 import {
   bboxContains,
@@ -373,6 +382,7 @@ async function main(): Promise<void> {
     total.bonus_ridden_km += done.bonus;
   }
   const outsideDone = kmByTier(edges.filter((e) => e.kommune === null), isRidden);
+  const timeline = progressByMonth(rides, edges, ridden, total.countable_km);
   const stats = {
     generated: new Date().toISOString(),
     total: {
@@ -387,6 +397,7 @@ async function main(): Promise<void> {
     /** Where outside.json has edges: the ride boxes fetched outside the region. */
     outside: { boxes: rideRoads.map((r) => bboxArray(r.bbox)) },
     rides,
+    timeline,
   };
 
   // Edge files grouped by kommune, or by ride box for edges outside the region;
@@ -411,16 +422,46 @@ async function main(): Promise<void> {
   const fileKey = (path: string) =>
     path.startsWith(PATHS.outsideOut) ? `outside-${path.slice(PATHS.outsideOut.length + 1, -5)}` : path.slice(PATHS.kommunerOut.length + 1, -5);
   const heatByFile: Record<string, Record<string, number[]>> = {};
-  let zonedEdges = 0;
+  // Zoned edges are skipped by everything below: no heat, no elevation, no feature.
+  // By its line, not only its vertices: a long straight edge can cross the circle between two
+  // vertices outside it, and its elevation samples would then be read inside the zone.
+  const zoneProj = zone ? new LocalProjection(zone.lon, zone.lat) : null;
+  const zoned = edges.map(
+    (e) =>
+      zone !== null &&
+      (e.coords.some(inZone) || nearestOnPolyline(e.coords.map((p) => zoneProj!.project(p)), 0, 0).d <= zone.radiusM + 2),
+  );
+  const zonedEdges = zoned.filter(Boolean).length;
   const heat = HeatSampler.open();
-  const heats = heat ? edges.map((e) => (e.coords.some(inZone) ? undefined : heat.edge(e.coords))) : [];
+  const heats = heat ? edges.map((e, i) => (zoned[i] ? undefined : heat.edge(e.coords))) : [];
   const scale = heatScale(heats);
   let heated = 0;
+
+  // Elevation: the points each published edge reads (only the ends on a bridge
+  // or tunnel), the tiles those touch, fetch what is missing, then sample.
+  const demStarted = Date.now();
+  const demPoints = edges.map((e, i) => {
+    if (zoned[i]) return undefined;
+    // The published length, so a reader can tell the point spacing from `l` and `z`.
+    const pts = profilePoints(e.coords, Math.round(e.length));
+    return { pts, ends: isStructure(e.tags) };
+  });
+  const demTiles = new Set<string>();
+  for (const d of demPoints) if (d) tilesFor(d.ends ? [d.pts[0]!, d.pts[d.pts.length - 1]!] : d.pts, demTiles);
+  const { fetched: demFetched, failed: demFailed } = await fetchTiles(demTiles);
+  const dem = new DemSampler(new Set(demFailed));
+  const elev = demPoints.map((d) => (d ? dem.profile(d.pts, d.ends) : undefined));
+  const withZ = elev.filter(Boolean).length;
+  console.log(
+    `elevation from ${demTiles.size} z${DEM.zoom} tiles (${demFetched} fetched) on ${withZ} of ${edges.length - zonedEdges} published edges, ${((Date.now() - demStarted) / 1000).toFixed(0)} s`,
+  );
+  if (demFailed.size) console.warn(`  ${demFailed.size} elevation tile(s) failed to download; their edges have no z`);
+
+  const surfaces = { p: 0, u: 0, none: 0 };
   for (const [i, e] of edges.entries()) {
-    if (e.coords.some(inZone)) {
-      zonedEdges++;
-      continue;
-    }
+    if (zoned[i]) continue;
+    const s = SURFACE[e.tags.surface?.split(/[;,/]/)[0]!.trim() ?? ""];
+    surfaces[s ?? "none"]++;
     const r = ridden.get(e.id);
     const file = e.kommune === null ? outsideFile(e) : `${PATHS.kommunerOut}/${e.kommune}.json`;
     let list = byFile.get(file);
@@ -448,9 +489,12 @@ async function main(): Promise<void> {
         d: r?.first_date,
         r: r?.first_activity,
         p: counted.has(e.id) ? 1 : undefined,
+        s,
+        z: elev[i],
       },
     });
   }
+  console.log(`surface: ${surfaces.p} paved, ${surfaces.u} unpaved, ${surfaces.none} unknown`);
   // Clear the old output first so a shorter kommune list or an older layout leaves nothing stale.
   for (const path of [PATHS.kommunerOut, PATHS.tracksOut, PATHS.outsideOut, "web/public/data/edges.json", "web/public/data/outside.json"]) {
     rmSync(path, { recursive: true, force: true });
@@ -497,6 +541,53 @@ async function main(): Promise<void> {
     `${byFile.size} edge files ${mb(edgesBytes)}, ${tracks.length} tracks ${mb(trackBytes)}, ` +
       `${PATHS.statsOut} ${mb(statsBytes)}, ${((Date.now() - started) / 1000).toFixed(0)} s`,
   );
+}
+
+/**
+ * One entry per calendar month from the first ride to the last, empty months
+ * included: that month's new km (the per-ride numbers, inside and outside the
+ * region) and the countable km ridden by its end under the blanket rule, the
+ * one the percent uses, so the last entry matches stats.total.
+ */
+function progressByMonth(
+  rides: { date: string; new_countable_km: number; new_bonus_km: number }[],
+  edges: Edge[],
+  ridden: Map<string, Ridden>,
+  countableKm: number,
+) {
+  if (rides.length === 0) return [];
+  const months = rides.map((r) => r.date.slice(0, 7)).sort();
+  const fresh = new Map<string, { countable: number; bonus: number }>();
+  for (const r of rides) {
+    const m = fresh.get(r.date.slice(0, 7)) ?? { countable: 0, bonus: 0 };
+    m.countable += r.new_countable_km;
+    m.bonus += r.new_bonus_km;
+    fresh.set(r.date.slice(0, 7), m);
+  }
+  const firstKm = new Map<string, number>();
+  for (const e of edges) {
+    const d = e.kommune !== null && e.tier === "countable" ? ridden.get(e.id)?.first_date : undefined;
+    if (d) firstKm.set(d.slice(0, 7), (firstKm.get(d.slice(0, 7)) ?? 0) + e.length / 1000);
+  }
+  const out = [];
+  let [y, mo] = months[0]!.split("-").map(Number) as [number, number];
+  const last = months[months.length - 1]!;
+  let cumulative = 0;
+  for (;;) {
+    const month = `${y}-${String(mo).padStart(2, "0")}`;
+    cumulative += firstKm.get(month) ?? 0;
+    const f = fresh.get(month);
+    out.push({
+      month,
+      new_countable_km: round(f?.countable ?? 0),
+      new_bonus_km: round(f?.bonus ?? 0),
+      countable_ridden_km: round(cumulative),
+      percent: round(countableKm ? (100 * cumulative) / countableKm : 0),
+    });
+    if (month >= last) break;
+    if (++mo > 12) (mo = 1), y++;
+  }
+  return out;
 }
 
 function round(n: number): number {

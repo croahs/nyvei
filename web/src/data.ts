@@ -4,24 +4,13 @@
 // short property names, mirrored from the comment at the top of match.ts:
 //   i id, a from node, b to node, c 1 countable / 0 bonus, h highway, n name,
 //   l length (m), d first ridden date, r first activity id, p 1 if counted as
-//   new km for that ride. n, d, r and p are absent when empty.
+//   new km for that ride, s surface, z elevations. n, d, r, p, s and z are absent
+//   when empty. The names live in props.ts.
 // MapLibre fetches and parses the edge files in its worker; only stats.json and
 // the selected ride's track are parsed here. Heat comes from the heat project
 // (HEAT_BASE): overlay tiles, meta.json and edges.json, joined onto edges by id.
 
-/** Property names in the edge files. */
-export const P = {
-  id: "i",
-  from: "a",
-  to: "b",
-  countable: "c",
-  highway: "h",
-  name: "n",
-  length: "l",
-  firstDate: "d",
-  firstActivity: "r",
-  counted: "p",
-} as const;
+export { P } from "./props";
 
 /** [minLon, minLat, maxLon, maxLat] */
 export type BBox = [number, number, number, number];
@@ -60,6 +49,20 @@ export interface Stats {
   kommuner: Record<string, KommuneStats>;
   outside: { boxes: BBox[] };
   rides: RideStats[];
+  /** One entry per calendar month from the first ride to the last, empty months included. */
+  timeline: MonthStats[];
+}
+
+export interface MonthStats {
+  /** "2024-06" */
+  month: string;
+  /** Sums of that month's rides' new km (RideStats), inside and outside the region. */
+  new_countable_km: number;
+  new_bonus_km: number;
+  /** Countable km in the loaded kommuner first ridden in or before this month; the last month equals total. */
+  countable_ridden_km: number;
+  /** countable_ridden_km over today's total countable km. */
+  percent: number;
 }
 
 /** The heat (cache/heat/tiles): the heat branch of the Pages project, the local copy in dev. */

@@ -71,6 +71,39 @@ export const MATCH = {
   maxGapM: 200,
 };
 
+/**
+ * Surface class by OSM `surface` value, written per edge as `s`. Values
+ * missing here (stone, and the free-text ones) leave `s` off: unknown, not a
+ * guess. Only the first of a list ("gravel;ground") is read.
+ */
+export const SURFACE: Record<string, "p" | "u"> = Object.fromEntries([
+  ...[
+    "asphalt", "paved", "concrete", "concrete:plates", "concrete:lanes", "concrete:slabs", "paving_stones",
+    "sett", "chipseal", "metal", "metal_grid", "metal_grating", "steel", "cobblestone", "cobblestone:flattened",
+    "unhewn_cobblestone", "bricks", "stone:slabs", "stone_slabs", "slabs", "wood", "tartan",
+  ].map((v) => [v, "p"] as const),
+  ...[
+    "unpaved", "gravel", "fine_gravel", "compacted", "dirt", "ground", "earth", "grass", "sand", "mud", "pebblestone",
+    "rock", "rocks", "rocky", "bare_rock", "fjell", "woodchips", "grass_paver", "gravel_and_partly_ground", "stepping_stones",
+    "soil", "peat", "clay",
+  ].map((v) => [v, "u"] as const),
+]);
+
+/**
+ * Elevation per edge (`z`) from Mapzen's Terrarium tiles on AWS Open Data: 256 px RGB PNGs,
+ * height = R * 256 + G + B / 256 - 32768 m, no key, global. Zoom 12 is about 19 m/px at 59°N.
+ */
+export const DEM = {
+  zoom: 12,
+  size: 256,
+  tileUrl: (z: number, x: number, y: number) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,
+  concurrency: 4,
+  /** One elevation per this many metres along an edge, both ends included. */
+  stepM: 50,
+  /** Decoded tiles (256 KB each) kept while sampling. */
+  cacheTiles: 400,
+};
+
 export interface Kommune {
   /** Display name as in OSM. */
   name: string;
@@ -111,6 +144,8 @@ export const PATHS = {
   activities: "cache/activities",
   manifest: "cache/activities/manifest.json",
   roads: "cache/roads",
+  /** Terrarium elevation tiles, <z>/<x>/<y>.png, fetched by match on demand. */
+  dem: "cache/dem",
   /** One edge file per kommune, <slug>.json */
   kommunerOut: "web/public/data/kommuner",
   /** Edges with no kommune (fetched for rides outside the region), one file per ride box: <index>.json */

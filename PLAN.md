@@ -1,9 +1,9 @@
 # Plan
 
 Goal: every ride is matched against the road network, a map shows ridden
-and unridden roads, coverage is counted per kommune, and a route builder
-makes loops through unridden roads that other cyclists actually ride, and
-exports GPX. The map also carries gravelheater's Strava heat overlays; that
+and unridden roads, coverage is counted per kommune and over time, and a
+route builder makes loops, sweeps and A to B routes through unridden roads
+that other cyclists actually ride, and exports GPX. The map also carries gravelheater's Strava heat overlays; that
 project is merged in here.
 
 ## Decisions
@@ -41,6 +41,9 @@ project is merged in here.
   files (they still count in the stats), and tracks are cut where they
   enter it, so a track file is a list of segments. The radius is 100 m
   by choice, knowing that ride ends still ring the block around it.
+  `stats.timeline` counts the edges in the zone, like the totals do, so
+  the month they were first ridden can be worked out from the published
+  edges; accepted, because the hole in the map says more.
 - **Strava heatmap, merged in from gravelheater.** The global heatmap
   (sport layers Ride, GravelRide, MountainBikeRide) does two jobs. As
   overlays, raster tiles on the map: *road* (the Ride layer as it is) and
@@ -73,6 +76,30 @@ project is merged in here.
   `pnpm match` has no heat until the next `pnpm heat:pages`. Heat covers gravelheater's "sandnes"
   box (Egersund to Nord-Jæren and Suleskard); edges outside it have no
   heat and route as before.
+- **Surface and elevation per edge.** Surface is the OSM `surface` tag
+  through `SURFACE` in `pipeline/config.ts`: paved, unpaved, or absent
+  (63 % of edges have no usable tag). Elevation is from the Mapzen
+  Terrarium tiles on AWS Open Data (no key, global, so rides outside
+  Rogaland have it too) at zoom 12, about 19 m per pixel here: coarser
+  than Kartverket's own DTM, but one source for everywhere. `pnpm match`
+  fetches the tiles it lacks into `cache/dem`; a tile that fails leaves
+  elevation off its edges and never fails the run. One height per 50 m
+  and both ends, whole metres, clamped at 0 (a shore pixel blends in the
+  sea floor); a bridge or tunnel reads only its two ends, since the
+  ground under or over it is not the road. Against the barometer of three
+  hilly rides the tiles climb too much, which the route's ascent
+  corrects with a 5 m deadband (route, below).
+- **Not rideable is the owner's list, not the map's.** A road that turns
+  out to be a private drive, gated or overgrown is marked in the site
+  and never routed over again. Marks live in the browser's localStorage
+  and take effect at once; the permanent list is
+  `web/public/blocked.json`, committed and served with the site, which
+  the site merges with the local marks by edge id (the panel copies the
+  merged list as JSON to paste in). Entries are `{ id, name?, at }`. A
+  marked road still counts in the coverage percent: the list says where
+  not to route, not what exists. An edge id is `<way id>_<index>`, so an
+  entry stops matching when OSM splits its way differently; the panel
+  counts those.
 - **Published on Cloudflare Pages**, repo stays private. GitHub Pages
   is not available on this account's plan for a private repo. `pnpm
   pages` deploys `web/dist` with wrangler, from this machine or from the
@@ -89,7 +116,8 @@ pipeline/            pnpm scripts, run locally
   roads.ts           Overpass per kommune -> cache/roads/<kommune>.json
   match.ts           tracks x edges -> web/public/data/kommuner/<slug>.json,
                      outside/<box>.json, tracks/<id>.json, stats.json
-                     (fetches cache/roads/ride-<id>.json for rides outside the region)
+                     (fetches cache/roads/ride-<id>.json for rides outside the region
+                     and the elevation tiles it lacks, cache/dem/12/<x>/<y>.png)
   writeback.ts       stats.json -> one "nyvei:" line per activity description on Intervals.icu
   heat.ts            Strava heatmap -> cache/heat/raw/<layer>/<z>/<x>/<y>.png (resumable)
   heattiles.ts       raw layers -> cache/heat/tiles/{road,gravel,offroad}/ + meta.json
@@ -129,17 +157,28 @@ its bounding box against the loaded kommune polygons; the part outside
 gets an on-demand Overpass fetch for that box plus 1 km, cached under the
 ride id. Stats: per kommune and total, countable km ridden over
 countable km, and per ride the new km split by tier (primary edges whose
-`first_activity` is that ride).
+`first_activity` is that ride). `stats.timeline` has one entry per month
+from the first ride to the last, empty months included: the month's new
+km (the sum of its rides' numbers, inside and outside the region) and
+the cumulative countable km and percent in the kommuner under the
+blanket rule, against today's total, so the last entry equals the
+total. An edge is in the privacy zone when its line comes inside the
+circle, not only a vertex: a long straight edge can cross it between two
+vertices outside, and its elevation samples would be read in there.
 
 **site.** Edges go out as one GeoJSON file per kommune plus one per ride
 box outside the region (`outside/<box>.json`),
 5-decimal coordinates, one-letter property names (the map is in the
-header of `match.ts` and in `web/src/data.ts`); about 80 MB for Rogaland
-and 40 MB outside. The site loads a file when its bounding box enters the viewport and MapLibre parses it in
+header of `match.ts` and in `web/src/props.ts`), with surface and
+elevations where there are any; about 124 MB in all. The site loads a file when its bounding box enters the viewport and MapLibre parses it in
 its worker, so the main thread only reads `stats.json`. Basemap is
 OpenFreeMap Positron, no key. Selecting a ride loads its thinned track
 from `tracks/<id>.json` and highlights its first-ridden edges, solid
-where they count as its new km.
+where they count as its new km. The panel also has a place and address
+search (Kartverket's open stedsnavn and adresser APIs, straight from
+the browser, addresses only when the query has a digit), the progress
+charts from `stats.timeline`, and per kommune the km left to its next
+whole percent.
 
 **writeback.** Each ride's new km goes back to Intervals.icu as one line
 in the activity description, `nyvei: 2.5 km ny vei · 8.2 km ny sti`,
@@ -204,8 +243,8 @@ is at least 25 counts as a road: no bonus factor, and it joins the
 destination clusters, because a track good enough for that much gravel
 heat is good enough to route a gravel ride over (86 unridden km in the
 box at gravel ≥ 25). Gravel laps that are not in OSM at all stay out of
-reach. OSM's `sac_scale`, `mtb:scale` and `smoothness`, the Strava hike
-layer and gradient would sharpen the cut and are not used. The graph (nodes
+reach. OSM's `sac_scale`, `mtb:scale` and `smoothness` and the Strava hike
+layer would sharpen the cut and are not used. The graph (nodes
 are the `a`/`b` OSM node ids, edges undirected) is built in a Web Worker
 that fetches the edge files itself; that is faster than handing it
 MapLibre's parsed copy, because structured cloning 400k features blocks
@@ -234,6 +273,57 @@ cheapest way home, then goes home. A 20 km sweep from central Sandnes
 rode 253 unridden stretches, 11.3 km of new road, in under 0.1 s. Export
 GPX 1.1. Own Dijkstra first; BRouter with nogo areas is the fallback if
 loops come out ugly.
+
+Four more cost rules, each a switch in the panel. *Avoid main roads* (on
+by default): trunk and primary cost × 4 and are nothing to head for;
+without it a gravel-mode route from home took 5.5 km of riksvei, with it
+a 40 km loop + sweep from Sandnes went from 6.9 to 0.1 km on them.
+*Paved only* leaves out edges tagged unpaved and bonus edges with no
+surface tag (an untagged road or cycleway here is nearly always
+asphalt, an untagged track is not). *Avoid steep*: an edge's steep share
+is the part of its length at 6 % or more, counting an elevation
+interval only when it also rises 2 m (whole metres make 1 m on a short
+interval read as 6 %); cost × (1 + 3 × steep share), and clusters rank
+by their km × (1 − steep share). From Sandnes a 40 km loop went from
+4.7 to 1.4 km steep and 32.0 to 26.1 km unridden. Roads marked *not
+rideable* are unusable in every mode and never a target.
+
+*Loop + sweep* is a loop sized for 0.7 D with a sweep spliced in at its
+turnaround: the sweep gets what is left of D, comes back to the
+turnaround, and the loop's own way home follows. From Sandnes at 40 km
+the legs are 14 out, 11 sweep, 15 back, with 33.7 km unridden (the loop
+alone: 35.4 of 41.3). Sweeping on towards home instead drifts: nearest
+first keeps finding a street closer to home and zigzags all the way
+back. Its clusters always rank by km × (1 − steep share), because a
+sweep climbs every side street. At 0.6 the loop is too short to reach a
+far target, at 0.8 only 7 km is left to sweep.
+
+*A to B* goes start, vias in order, end, and back to the start when
+there is no end (a round trip through chosen places), each leg a
+cheapest path under the same costs with the earlier legs' edges × 4, so
+a round trip does not retrace: Sandnes, Ålgård and home is 28.3 km with
+0.2 km ridden twice. "Try another" routes the earlier variants first
+and makes their edges cost × 2: at 1.5 the third route shared up to
+52 % with the first, at 3 it ran up to 43 % longer. Sandnes to Bryne
+gives 17.2, 16.4 and 20.2 km with 1 to 3 % in common.
+
+A *gap* is a cluster of unridden target edges of at most 500 m in all
+that touches a ridden edge: the stubs left between roads already
+ridden. There are about 1900 (313 km); the panel lists the nearest, and
+"only gaps" makes a sweep ride nothing else (15 km from Sandnes: 70
+edges, 6.1 km new). 137 of them are under 30 m and look like junction
+stubs where the 80 % rule missed rather than streets.
+
+A route's result carries its climb, steep km, an elevation profile and
+its km by surface and on main roads. The climb uses a 5 m deadband: the
+19 m pixels wobble along a road, and at 2 m the tiles read 20 to 40 %
+over the barometer on three of the owner's hilly rides (73 to 133 km),
+at 5 m within 3 to 14 %; flat rides read a little low. Steep km agreed
+with the barometer within a few km on the same rides. The whole request
+(mode, points, distance, switches, variant) lives in the address as
+`?route=…&start=lat,lon&via=…&end=…&km=…&opts=…&prefer=…&try=…`, next to
+`?ride=`, so a link rebuilds the same route on another device as long
+as the data has not changed.
 
 ## Phases
 
@@ -279,6 +369,14 @@ Each phase ends on a checkable criterion.
   carry heat anyway (k = 0 gives 78 %), so here the slider moves less
   than on the synthetic grid.
 
+- **Phase 6, more routes and progress.** A to B with vias, loop + sweep,
+  avoid main roads, paved only, avoid steep, not rideable, gaps, place
+  search, my position, route in the address, progress over time, next
+  percent per kommune. Done when each works on the rendered page with
+  real data at desktop and phone width. Built and checked on
+  `pnpm dev` at 1440 and 390 px; not yet published, and real GPS on a
+  phone is untried (geolocation was emulated).
+
 ## Open questions
 
 - Exact tier map: unknown until the data is on a map. `service` roads
@@ -287,7 +385,7 @@ Each phase ends on a checkable criterion.
   from the way out, so loops come out as narrow corridors (Sandnes to
   Stavanger and back) rather than round. A cost on edges near the
   outbound path would widen them; BRouter is the bigger step.
-- Data size: the edge files are about 120 MB in all and the first full
+- Data size: the edge files are about 124 MB in all and the first full
   view takes about 8 s. Vector tiles (PMTiles) would cut that on the
   published site.
 - Heat calibration: whether heat ≥ 25 is the right line for "roads
@@ -296,18 +394,13 @@ Each phase ends on a checkable criterion.
   Sandnes at k = 0.6, gravel took a 40 km loop from 8 % to 26 % on
   gravel heat ≥ 25 and off-road from 33 % to 59 %, but there is little
   gravel within reach there.
-- Loop with a sweep at its target: a ride with one goal at a fair
-  distance and a lot of sweeping. Built by hand once, outside the site:
-  a 28 km loop with a 12 km sweep spliced in at its turnaround gives
-  rounds of about 40 km from home. Two things it showed. Trunk and
-  primary roads need a cost factor of their own (×4 removed them):
-  without it a gravel-mode route from home took 5.5 km of riksvei.
-  And the sweep area's gradient matters more than the loop's, because
-  a sweep climbs every side street: the Ålgård sweep had 43 % of its
-  length at 6 % or steeper (Kartverket DTM, 100 m windows), the Bryne
-  one 4 %. Whether to make this a third mode, and whether gradient
-  should rank the target clusters, is open.
-- Left behind in gravelheater: point-to-point routing through clicked
-  waypoints, surface share along a route, elevation profile, GPX import,
-  saved routes, place search and the second area (Stellenbosch). Port
-  them here if they are missed.
+- Calibration of the new routes: the 500 m gap limit (200 m gives 1296
+  gaps and 123 km, 1000 m 2265 and 576 km), whether gaps under 30 m
+  should be listed at all, the 2 m rise in the steep rule, and the 5 m
+  ascent deadband, which is set from three rides.
+- Loops that miss their distance: "try another" on a 40 km loop from
+  Sandnes gave 35.6 km for the second cluster, outside the 5 % the
+  rescaling aims for. Unchanged from before phase 6; not looked into.
+- Left behind in gravelheater: GPX import, saved routes (the address
+  holds one route) and the second area (Stellenbosch). Port them here if
+  they are missed.
