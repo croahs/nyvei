@@ -347,7 +347,7 @@ async function start(): Promise<void> {
   heat = edges;
   for (const k of loaded) applyHeat(k);
   setupMapSection(map, `anchor-${GROUPS[0]!.id}`, meta, !!heat, setEdgeHeat);
-  route = setupRoute(map, files, meta?.bbox, heat ? new URL(EDGE_HEAT_URL, location.href).href : undefined);
+  route = setupRoute(map, files, meta?.bbox, heat ? EDGE_HEAT_URL : undefined);
   const wanted = new URLSearchParams(location.search).get("ride");
   const ride = stats.rides.find((r) => r.id === wanted);
   if (ride) void selectRide(ride);

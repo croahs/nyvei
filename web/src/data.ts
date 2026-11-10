@@ -63,7 +63,34 @@ export interface Stats {
 }
 
 /** The heat (cache/heat/tiles): the heat branch of the Pages project, the local copy in dev. */
-export const HEAT_BASE = import.meta.env.DEV ? `${import.meta.env.BASE_URL}heat/` : "https://heat.nyvei.pages.dev/";
+const HEAT_BASE = import.meta.env.DEV ? `${import.meta.env.BASE_URL}heat/` : "https://heat.nyvei.pages.dev/";
+
+/**
+ * The heat project serves only to its key (pipeline/heatworker.js). The owner gives it once as
+ * ?heat=<key>; it stays in this browser and leaves the address bar. A visitor without it gets the
+ * site without heat. Dev reads the local copy and needs none.
+ */
+const HEAT_KEY = "nyvei.heat-key";
+function heatKey(): string | null {
+  try {
+    const url = new URL(location.href);
+    const given = url.searchParams.get("heat");
+    if (given !== null) {
+      if (given) localStorage.setItem(HEAT_KEY, given);
+      else localStorage.removeItem(HEAT_KEY);
+      url.searchParams.delete("heat");
+      history.replaceState(null, "", url);
+    }
+    return localStorage.getItem(HEAT_KEY);
+  } catch {
+    return null;
+  }
+}
+const key = heatKey();
+const hasHeat = import.meta.env.DEV || !!key;
+/** The absolute URL of a file in the heat project, with the key. */
+export const heatUrl = (path: string): string =>
+  new URL(HEAT_BASE, location.href).href + path + (import.meta.env.DEV ? "" : `?k=${encodeURIComponent(key ?? "")}`);
 
 /** Overlay tiles from pnpm heat:tiles (meta.json); bbox is also where match sampled edge heat. */
 export interface HeatMeta {
@@ -78,8 +105,9 @@ export interface HeatMeta {
 
 /** A JSON file of the heat project, or null when there is none. */
 async function heatJson<T>(name: string): Promise<T | null> {
+  if (!hasHeat) return null;
   try {
-    const res = await fetch(`${HEAT_BASE}${name}`);
+    const res = await fetch(heatUrl(name));
     // Pages answers unknown paths with index.html, so check the type too.
     if (!res.ok || !res.headers.get("content-type")?.includes("json")) return null;
     return (await res.json()) as T;
@@ -94,7 +122,7 @@ export const loadHeatMeta = () => heatJson<HeatMeta>("meta.json");
 export type EdgeHeatValues = [number, number, number, number];
 /** Per edge file key (EdgeFile.key), per edge id. */
 export type EdgeHeat = Record<string, Record<string, EdgeHeatValues>>;
-export const EDGE_HEAT_URL = `${HEAT_BASE}edges.json`;
+export const EDGE_HEAT_URL = heatUrl("edges.json");
 let edgeHeat: Promise<EdgeHeat | null> | undefined;
 export const loadEdgeHeat = () => (edgeHeat ??= heatJson<EdgeHeat>("edges.json"));
 

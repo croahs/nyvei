@@ -19,7 +19,8 @@ when a decision lands; never append a contradicting section.
   PLAN.md phase 4.
 - Strava heat tiles are derived Strava data for personal use. They live in
   `cache/heat` on the owner's machine and on the `heat` branch of the
-  Pages project, which only the owner deploys (`pnpm heat:pages`); the
+  Pages project, which only the owner deploys (`pnpm heat:pages`) and
+  which serves only to the owner's key (`pipeline/heatworker.js`); the
   site fetches heat from there at runtime, so the site build and the edge
   files never carry heat. Strava cookies live in `.env` like the
   Intervals.icu key.

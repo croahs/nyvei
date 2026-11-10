@@ -53,7 +53,10 @@ roads other cyclists ride. Both need the raw heatmap tiles in `cache/heat/raw/`:
 5. `pnpm heat:pages` deploys `cache/heat/tiles` to the `heat` branch of the
    Pages project, https://heat.nyvei.pages.dev, where the published site
    fetches it. Only needed when the heat changes; site deploys never touch
-   it.
+   it. The heat is served only to a key: set it once with
+   `pnpm wrangler pages secret put HEAT_KEY --project-name nyvei --env preview`
+   (before the deploy that should use it), then open the site once as
+   `?heat=<key>` in each browser that should see heat.
 
 The heat area is `HEAT.bbox` in `pipeline/config.ts`. `pnpm dev` serves the
 local heat folder, so heat works there without a deploy. Without heat the

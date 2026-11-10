@@ -4,7 +4,7 @@
 // here sits below the edge groups, so `below` is the lowest edge anchor.
 
 import type * as maplibregl from "maplibre-gl";
-import { HEAT_BASE, type HeatMeta } from "./data";
+import { heatUrl, type HeatMeta } from "./data";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
@@ -118,7 +118,6 @@ export function setupMapSection(
     return;
   }
   box.hidden = false;
-  const base = new URL(HEAT_BASE, location.href).href;
   for (const layer of meta.layers) {
     const id = `heat-${layer}`;
     map.addSource(id, {
@@ -127,7 +126,7 @@ export function setupMapSection(
       minzoom: meta.minzoom,
       maxzoom: meta.layerMaxzoom?.[layer] ?? meta.maxzoom,
       bounds: meta.bbox,
-      tiles: [`${base}${layer}/{z}/{x}/{y}.png`],
+      tiles: [heatUrl(`${layer}/{z}/{x}/{y}.png`)],
       attribution: "Heat © Strava",
     });
     map.addLayer(

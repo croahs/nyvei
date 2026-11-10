@@ -55,14 +55,19 @@ project is merged in here.
   four heats, written by `pnpm match`). That folder is the `heat` branch
   of the Pages project, heat.nyvei.pages.dev, deployed with `pnpm
   heat:pages` from the owner's machine whenever the heat is refreshed,
-  which is rare; production deploys of the site never touch it, and it
-  sends `Access-Control-Allow-Origin: *`. (Its own project was the first
+  which is rare; production deploys of the site never touch it. It is
+  served by `pipeline/heatworker.js`, deployed with it as `_worker.js`:
+  every file needs `?k=` equal to the `HEAT_KEY` secret of the Pages
+  project's preview environment, and goes out with
+  `Access-Control-Allow-Origin: *`. The owner gives the site the key once
+  as `?heat=<key>`; it stays in that browser's localStorage, and every
+  other visitor gets the site without heat. (Its own project was the first
   plan, but wrangler now creates new Pages projects as Workers, and that
   failed.) The site build and the edge
   files carry no heat, so the nightly workflow can rebuild and deploy
   the site without it; the browser fetches the heat project and joins it
   onto the edges by id (the router in its worker, the map colouring as
-  feature-state). Neither is behind Cloudflare Access: the site is
+  feature-state). The site is not behind Cloudflare Access: it is
   personal and of no interest to anyone else. Edge ids come from each
   side's own road data, so an edge whose id changed since the last local
   `pnpm match` has no heat until the next `pnpm heat:pages`. Heat covers gravelheater's "sandnes"
